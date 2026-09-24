@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="auth panel">
+  <h1>You're invited</h1>
+  <p>You've been invited to help run <strong>{{ inv.tournament.name }}</strong> as <strong>{{ inv.get_role_display }}</strong>.</p>
+  {% if user.is_authenticated %}
+    <form method="post">{% csrf_token %}<button class="btn" type="submit">Accept invitation</button></form>
+  {% else %}
+    <p>Log in or create an account to accept.</p>
+    <div class="btn-row">
+      <a class="btn" href="{% url 'signup' %}?next={{ request.path|urlencode }}">Sign up</a>
+      <a class="btn btn-ghost" href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

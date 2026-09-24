@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load toqo %}
+{% block body %}
+<div class="hero-home">
+  {% include "partials/messages.html" %}
+  {% if user.is_authenticated %}
+    <div class="page-head">
+      <div><h1>My tournaments</h1><p class="muted">Tournaments you own or help run.</p></div>
+      <a class="btn" href="{% url 'm_new' %}">+ New tournament</a>
+    </div>
+    <div class="cards">
+      {% for t in mine %}
+        <a class="panel" href="{% url 'm_dashboard' t.slug %}" style="color:inherit;text-decoration:none">
+          <div class="panel-head"><strong>{{ t.name }}</strong>{% badge t.status %}</div>
+          <div class="muted small">{{ t.get_sport_display }} · {{ t.start_date|date:"M j" }}–{{ t.end_date|date:"M j, Y" }}</div>
+          {% if t.location %}<div class="muted small">{{ t.location }}</div>{% endif %}
+        </a>
+      {% empty %}
+        <div class="panel empty">No tournaments yet. <a href="{% url 'm_new' %}">Create your first one</a>.</div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="panel" style="padding:2rem">
+      <h1>Run your tournament from one place</h1>
+      <p class="muted">Create an event, add teams, pick a format, generate the schedule, publish, and enter results live —
+        standings, advancement and brackets update automatically.</p>
+      <div class="btn-row"><a class="btn" href="{% url 'signup' %}">Create a tournament</a><a class="btn btn-ghost" href="{% url 'login' %}">Log in</a></div>
+    </div>
+  {% endif %}
+  {% if public %}
+    <h2>Public tournaments</h2>
+    <div class="cards">
+      {% for t in public %}
+        <a class="panel" href="{% url 'public_home' t.slug %}" style="color:inherit;text-decoration:none">
+          <div class="panel-head"><strong>{{ t.name }}</strong>{% badge t.status %}</div>
+          <div class="muted small">{{ t.get_sport_display }} · {{ t.start_date|date:"M j, Y" }}{% if t.location %} · {{ t.location }}{% endif %}</div>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

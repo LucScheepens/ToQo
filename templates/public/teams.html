@@ -1,0 +1,10 @@
+{% extends "public/layout.html" %}
+{% block page_title %}Teams · {% endblock %}
+{% block content %}
+{% for cat, teams in cats %}
+  <div class="panel">
+    <h2>{{ cat.name }} <span class="muted small">{{ teams|length }} teams</span></h2>
+    <ul class="team-list">{% for team in teams %}<li><a href="{% url 'public_team' t.slug team.id %}">{{ team.name }}</a></li>{% empty %}<li class="muted">No teams yet.</li>{% endfor %}</ul>
+  </div>
+{% endfor %}
+{% endblock %}

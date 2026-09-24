@@ -1,0 +1,34 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Admins{% endblock %}
+{% block content %}
+<h1>Admins</h1>
+<p class="muted"><strong>Admins</strong> can edit everything except admins and deletion. <strong>Scorekeepers</strong> can only enter results and notes.</p>
+<div class="split">
+  <div class="panel">
+    <table>
+      <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
+      <tr><td>{{ t.owner.username }} <span class="muted small">{{ t.owner.email }}</span></td><td>Owner</td><td></td></tr>
+      {% for m in members %}
+        <tr><td>{{ m.user.username }} <span class="muted small">{{ m.user.email }}</span></td>
+          <td><form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="role"><input type="hidden" name="id" value="{{ m.id }}">
+            <select name="role" onchange="this.form.submit()"><option value="admin" {% if m.role == 'admin' %}selected{% endif %}>Admin</option><option value="scorekeeper" {% if m.role == 'scorekeeper' %}selected{% endif %}>Scorekeeper</option></select></form></td>
+          <td><form method="post" data-confirm="Remove {{ m.user.username }}?">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{ m.id }}"><button class="btn btn-sm btn-ghost btn-danger">Remove</button></form></td></tr>
+      {% endfor %}
+    </table>
+    {% if invites %}
+      <h3>Pending invitations</h3>
+      <table>{% for inv, link in invites %}
+        <tr><td>{{ inv.email }} <span class="muted small">({{ inv.get_role_display }})</span></td>
+          <td><button type="button" class="btn btn-sm btn-ghost" data-copy="{{ link }}">Copy link</button></td>
+          <td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="revoke"><input type="hidden" name="id" value="{{ inv.id }}"><button class="btn btn-sm btn-ghost btn-danger">Revoke</button></form></td></tr>
+      {% endfor %}</table>
+    {% endif %}
+  </div>
+  <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="action" value="invite">
+    <h2>Invite</h2>
+    {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+    <button class="btn" type="submit">Invite</button>
+    <p class="muted small">Existing users are added immediately; otherwise you get an invitation link to send.</p>
+  </form>
+</div>
+{% endblock %}

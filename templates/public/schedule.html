@@ -1,0 +1,15 @@
+{% extends "public/layout.html" %}
+{% block page_title %}Schedule · {% endblock %}
+{% block content %}
+<form method="get" class="filters">
+  {% if cats|length > 1 %}<select name="cat" onchange="this.form.submit()"><option value="">All categories</option>{% for c in cats %}<option value="{{ c.id }}" {% if f.cat == c.id|stringformat:'s' %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>{% endif %}
+  <select name="team" onchange="this.form.submit()"><option value="">All teams</option>{% for x in all_teams %}<option value="{{ x.id }}" {% if f.team == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+  {% if spaces|length > 1 %}<select name="space" onchange="this.form.submit()"><option value="">All {{ t.space_noun|lower }}s</option>{% for s in spaces %}<option value="{{ s.id }}" {% if f.space == s.id|stringformat:'s' %}selected{% endif %}>{{ s.full_name }}</option>{% endfor %}</select>{% endif %}
+</form>
+{% for d, games in by_day.items %}
+  <h2>{% if d %}{{ d|date:"l, F j" }}{% else %}Time to be announced{% endif %}</h2>
+  <div class="game-list">{% for g in games %}{% include "partials/game_row.html" %}{% endfor %}</div>
+{% empty %}
+  <div class="panel empty">The schedule hasn't been published yet.</div>
+{% endfor %}
+{% endblock %}

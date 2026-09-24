@@ -1,0 +1,31 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Categories{% endblock %}
+{% block content %}
+<h1>Categories</h1>
+<p class="muted">Categories are independent competitions (e.g. Men's Competitive, U14). Teams in different categories never play each other, and each category has its own format. A simple tournament has just one.</p>
+<div class="panel">
+  <table>
+    <thead><tr><th>Name</th><th class="num">Teams</th><th>Format</th><th></th></tr></thead>
+    <tbody>
+    {% for c in cats %}
+      <tr>
+        <td><form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{ c.id }}">
+          <input type="text" name="name" value="{{ c.name }}"><button class="btn btn-sm btn-ghost">Rename</button></form></td>
+        <td class="num">{{ c.teams.count }}</td>
+        <td>{{ c.get_format_kind_display|default:"—" }}</td>
+        <td class="nowrap">
+          <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="id" value="{{ c.id }}"><button class="btn btn-sm btn-ghost" name="action" value="up" title="Move up">↑</button><button class="btn btn-sm btn-ghost" name="action" value="down" title="Move down">↓</button></form>
+          <form method="post" class="inline" data-confirm="Delete {{ c.name }} with all its teams and games?">{% csrf_token %}<input type="hidden" name="id" value="{{ c.id }}"><input type="hidden" name="confirm" value="1"><button class="btn btn-sm btn-ghost btn-danger" name="action" value="delete">Delete</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<form method="post" class="panel row-form">{% csrf_token %}
+  <input type="hidden" name="action" value="add">
+  {% include "partials/field.html" with field=form.name %}
+  <button class="btn" type="submit">Add category</button>
+</form>
+<a class="btn btn-ghost" href="{% url 'm_teams' t.slug %}">Next: teams →</a>
+{% endblock %}

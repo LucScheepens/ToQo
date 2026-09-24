@@ -1,0 +1,38 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Venues{% endblock %}
+{% block content %}
+<h1>Venues &amp; {{ t.space_noun|lower }}s</h1>
+<p class="muted">Games are scheduled onto {{ t.space_noun|lower }}s. Group them by venue (e.g. “Sports Centre” with Court 1–4).</p>
+{% for v in venue_list %}
+<div class="panel">
+  <div class="panel-head">
+    <form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="edit_venue"><input type="hidden" name="venue" value="{{ v.id }}">
+      <input type="text" name="name" value="{{ v.name }}" style="font-weight:700"><input type="text" name="address" value="{{ v.address }}" placeholder="Address"><button class="btn btn-sm btn-ghost">Save</button></form>
+    <form method="post" data-confirm="Delete {{ v.name }} and its {{ t.space_noun|lower }}s? Games on them become unscheduled.">{% csrf_token %}<input type="hidden" name="action" value="delete_venue"><input type="hidden" name="venue" value="{{ v.id }}"><button class="btn btn-sm btn-ghost btn-danger">Delete venue</button></form>
+  </div>
+  <table>
+    <tbody>
+    {% for s in v.spaces.all %}
+      <tr>
+        <td><form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="rename_space"><input type="hidden" name="space" value="{{ s.id }}"><input type="text" name="name" value="{{ s.name }}"><button class="btn btn-sm btn-ghost">Rename</button></form></td>
+        <td class="muted small">{{ s.games.count }} game{{ s.games.count|pluralize }}</td>
+        <td><form method="post" data-confirm="Delete {{ s.name }}?">{% csrf_token %}<input type="hidden" name="action" value="delete_space"><input type="hidden" name="space" value="{{ s.id }}"><button class="btn btn-sm btn-ghost btn-danger">Delete</button></form></td>
+      </tr>
+    {% empty %}<tr><td class="muted">No {{ t.space_noun|lower }}s yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <form method="post" class="row-form" style="margin-top:.6rem">{% csrf_token %}<input type="hidden" name="action" value="add_space"><input type="hidden" name="venue" value="{{ v.id }}">
+    <input type="text" name="name" placeholder="{{ t.space_noun }} {{ v.spaces.count|add:1 }}"><button class="btn btn-sm">+ Add {{ t.space_noun|lower }}</button></form>
+</div>
+{% endfor %}
+<form method="post" class="panel">{% csrf_token %}<input type="hidden" name="action" value="add_venue">
+  <h2>Add a venue</h2>
+  <div class="row-form">
+    {% include "partials/field.html" with field=vform.name %}
+    {% include "partials/field.html" with field=vform.address %}
+    <div class="field"><label>Number of {{ t.space_noun|lower }}s</label><input type="number" name="spaces" min="0" max="50" value="2" style="width:6rem"></div>
+    <button class="btn" type="submit">Add venue</button>
+  </div>
+</form>
+<a class="btn btn-ghost" href="{% url 'm_schedule' t.slug %}">Next: schedule →</a>
+{% endblock %}

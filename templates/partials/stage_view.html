@@ -1,0 +1,35 @@
+{% load toqo %}
+{% with stage=sv.stage %}
+{% for p in sv.pools %}
+  <div class="pool-block">
+    {% if sv.pools|length > 1 or not stage.is_bracket %}<h3>{{ p.pool.name }}</h3>{% endif %}
+    {% if stage.is_bracket %}
+      {% for sec in p.sections %}
+        <div class="bracket-section">
+          {% if p.sections|length > 1 %}<h4>{{ sec.name }}</h4>{% endif %}
+          {% if sec.is_list %}
+            <div class="list-bracket">{% for col in sec.columns %}{% for g in col.games %}{% include "partials/match.html" %}{% endfor %}{% endfor %}</div>
+          {% else %}
+            <div class="bracket">
+              {% for col in sec.columns %}
+                <div class="col"><div class="col-title">{{ col.title }}</div>{% for g in col.games %}{% include "partials/match.html" %}{% endfor %}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+      <details><summary class="small">Placements</summary>{% include "partials/table.html" with rows=p.rows bracket=True %}</details>
+    {% else %}
+      {% include "partials/table.html" with rows=p.rows swiss=sv.is_swiss %}
+      {% if show_games %}
+      <details class="small" style="margin-top:.5rem"><summary>Games</summary>
+        {% for rnd, games in p.rounds %}
+          <h4 class="muted">{% if stage.kind == 'swiss' %}Swiss round{% else %}Round{% endif %} {{ rnd }}</h4>
+          <div class="game-list">{% for g in games %}{% if not g.is_bye %}{% include "partials/game_row.html" %}{% endif %}{% endfor %}</div>
+        {% endfor %}
+      </details>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endfor %}
+{% endwith %}

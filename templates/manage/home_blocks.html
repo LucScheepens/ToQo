@@ -1,0 +1,33 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Home page{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Public home page</h1><p class="muted">Content blocks shown on the tournament's home page, in this order.</p></div>
+  <a class="btn btn-ghost" href="{% url 'public_home' t.slug %}" target="_blank">Preview ↗</a>
+</div>
+<div class="split">
+  <div class="panel">
+    <table>
+      {% for b in blocks %}
+        <tr class="{% if not b.enabled %}muted{% endif %}">
+          <td><strong>{{ b.title|default:b.get_kind_display }}</strong><div class="small muted">{{ b.get_kind_display }}{% if not b.enabled %} · hidden{% endif %}</div></td>
+          <td class="nowrap" style="text-align:right">
+            <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="id" value="{{ b.id }}">
+              <button class="btn btn-sm btn-ghost" name="action" value="up">↑</button><button class="btn btn-sm btn-ghost" name="action" value="down">↓</button>
+              <button class="btn btn-sm btn-ghost" name="action" value="toggle">{% if b.enabled %}Hide{% else %}Show{% endif %}</button></form>
+            <a class="btn btn-sm btn-ghost" href="?edit={{ b.id }}">Edit</a>
+            <form method="post" class="inline" data-confirm="Delete this block?">{% csrf_token %}<input type="hidden" name="id" value="{{ b.id }}"><button class="btn btn-sm btn-ghost btn-danger" name="action" value="delete">Delete</button></form>
+          </td>
+        </tr>
+      {% empty %}<tr><td class="muted">No blocks yet.</td></tr>{% endfor %}
+    </table>
+  </div>
+  <form method="post" enctype="multipart/form-data" class="panel">{% csrf_token %}
+    <input type="hidden" name="action" value="save">{% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
+    <h2>{% if edit %}Edit block{% else %}Add a block{% endif %}</h2>
+    {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+    <p class="muted small"><strong>Venues</strong> and <strong>Categories</strong> blocks fill themselves from your setup. <strong>Sponsors</strong> and <strong>Links</strong> use the list field.</p>
+    <div class="btn-row"><button class="btn" type="submit">Save block</button>{% if edit %}<a class="btn btn-ghost" href="{% url 'm_home' t.slug %}">Cancel</a>{% endif %}</div>
+  </form>
+</div>
+{% endblock %}

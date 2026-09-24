@@ -1,0 +1,54 @@
+{% extends "manage/layout.html" %}
+{% load toqo %}
+{% block page_title %}Standings{% endblock %}
+{% block main_attrs %}data-live-version="{{ t.version }}" data-live-url="{% url 'api_version' t.slug %}"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Standings &amp; brackets</h1><p class="muted">Calculated from results. When a stage is complete, review who qualifies and confirm to advance teams.</p></div>
+  {% if is_admin %}
+    {% if can_finish %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="finish"><button class="btn">🏆 Finish tournament</button></form>
+    {% elif t.status == 'completed' %}<form method="post" data-confirm="Reopen the tournament to change results?">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn btn-ghost">Reopen tournament</button></form>{% endif %}
+  {% endif %}
+</div>
+
+{% if cats|length > 1 %}<div class="tabs">{% for cv in cats %}<a href="#cat-{{ cv.category.id }}">{{ cv.category.name }}</a>{% endfor %}</div>{% endif %}
+
+{% for cv in cats %}
+<section id="cat-{{ cv.category.id }}">
+  {% if cats|length > 1 %}<h2 style="font-size:1.4rem">{{ cv.category.name }}</h2>{% endif %}
+  {% if cv.final %}
+    <div class="panel callout ok"><strong>Final standings:</strong>
+      {% for place, team, flight in cv.final|slice:":8" %}<span style="margin-right:1rem">{{ place|ordinal }} {{ team.name }}</span>{% endfor %}</div>
+  {% endif %}
+  {% for sv in cv.stages %}
+    <div class="panel" id="stage-{{ sv.stage.id }}">
+      <div class="panel-head">
+        <h2>{{ sv.stage.name }} {% badge sv.status %}</h2>
+        <span class="muted small">{{ sv.done }}/{{ sv.total }} games · <a href="{% url 'm_stage' t.slug sv.stage.id %}">configure</a></span>
+      </div>
+      {% if sv.can_advance and is_admin %}
+        <div class="callout info">
+          <strong>{{ sv.stage.name }} is complete.</strong> These teams qualify:
+          <table style="margin:.5rem 0;background:transparent">
+            <thead><tr><th>Next stage slot</th><th>Source</th><th>Team</th></tr></thead>
+            {% for e, team, tie in sv.preview %}
+              <tr class="{% if tie %}flag{% endif %}"><td>{{ e.pool.stage.name }} · {{ e.pool.name }} seed {{ e.position }}</td><td>{{ e.source_label }}</td>
+                <td><strong>{{ team.name|default:"—" }}</strong>{% if e.locked %} <span class="badge badge-warn">manual: {{ e.team.name }}</span>{% endif %}{% if tie %} <span class="badge badge-warn" title="Decided by seed after all tiebreakers">tie</span>{% endif %}</td></tr>
+            {% endfor %}
+          </table>
+          <form method="post">{% csrf_token %}<input type="hidden" name="action" value="advance"><input type="hidden" name="stage" value="{{ sv.stage.id }}"><button class="btn">Confirm and advance teams</button></form>
+          <p class="small muted">To override a qualifier (e.g. after a coin toss), set the team manually on the <a href="{% url 'm_stage' t.slug sv.preview.0.0.pool.stage_id %}">next stage</a>.</p>
+        </div>
+      {% elif sv.status == 'transitioned' and is_admin %}
+        <form method="post" class="btn-row" data-confirm="Empty the next stage's slots again?">{% csrf_token %}<input type="hidden" name="action" value="undo_advance"><input type="hidden" name="stage" value="{{ sv.stage.id }}">
+          <span class="small muted">Teams advanced {{ sv.stage.advanced_at|date:"M j H:i" }}. Editing results here updates the next stage automatically.</span>
+          <button class="btn btn-ghost btn-sm">Undo advancement</button></form>
+      {% endif %}
+      {% include "partials/stage_view.html" with manage=True show_games=True %}
+    </div>
+  {% empty %}
+    <div class="panel empty">No format yet. <a href="{% url 'm_format_category' t.slug cv.category.id %}">Choose one</a>.</div>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}

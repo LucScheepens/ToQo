@@ -1,0 +1,19 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Share{% endblock %}
+{% block content %}
+<h1>Share</h1>
+{% if not t.is_live %}<div class="callout">The tournament is still a draft — the link works for admins only until you <a href="{% url 'm_review' t.slug %}">publish</a>.</div>
+{% elif t.visibility == 'private' %}<div class="callout">Visibility is private — only admins can open the link. Change it in <a href="{% url 'm_settings' t.slug %}">settings</a>.</div>{% endif %}
+<div class="split">
+  <div class="panel">
+    <h2>Tournament link</h2>
+    <div class="row-form"><input type="text" readonly value="{{ url }}" style="flex:1;min-width:16rem"><button type="button" class="btn" data-copy="{{ url }}">Copy</button></div>
+    <p class="muted small">Players, coaches, parents and spectators all follow the same page: schedule, live results and standings.</p>
+  </div>
+  <div class="panel qr">
+    <h2>QR code</h2>
+    {{ qr|safe }}
+    <p><a href="{% url 'public_qr' t.slug %}" target="_blank">Open as SVG</a> to print it at any size.</p>
+  </div>
+</div>
+{% endblock %}

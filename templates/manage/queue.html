@@ -1,0 +1,39 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Queue board{% endblock %}
+{% block main_attrs %}data-live-version="{{ t.version }}" data-live-url="{% url 'api_version' t.slug %}"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Queue board</h1><p class="muted">When a game finishes, enter the result — the {{ t.space_noun|lower }} automatically takes the next ready game (both teams known and not playing elsewhere).</p></div>
+  {% if live %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="fill_all"><button class="btn">Fill all free {{ t.space_noun|lower }}s</button></form>{% endif %}
+</div>
+{% if not live %}<div class="callout info">Publish the tournament to start games.</div>{% endif %}
+<div class="cards">
+  {% for space, g in spaces %}
+    <div class="panel">
+      <div class="panel-head"><h3>{{ space.name }}</h3><span class="muted small">{{ space.venue.name }}</span></div>
+      {% if g %}
+        <div class="small muted">#{{ g.number }} · {{ g.stage.category.name }} · {{ g.title }} · since {{ g.started_at|time:"H:i" }}</div>
+        <div style="font-size:1.1rem;margin:.4rem 0"><strong>{{ g.home_team.name }}</strong> vs <strong>{{ g.away_team.name }}</strong></div>
+        <a class="btn btn-sm" href="{% url 'm_game' t.slug g.id %}?next={{ request.path|urlencode }}">Enter result</a>
+      {% else %}
+        <p class="muted">Free</p>
+        {% if live %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="start_next"><input type="hidden" name="space" value="{{ space.id }}"><button class="btn btn-sm btn-ghost">Start next game</button></form>{% endif %}
+      {% endif %}
+    </div>
+  {% empty %}
+    <div class="panel empty">Add <a href="{% url 'm_venues' t.slug %}">{{ t.space_noun|lower }}s</a> first.</div>
+  {% endfor %}
+</div>
+<div class="split">
+  <div class="panel">
+    <h2>Ready to play ({{ ready|length }})</h2>
+    <div class="game-list">{% for g in ready %}{% include "partials/game_row.html" with manage=True %}{% empty %}<p class="muted">No game is ready.</p>{% endfor %}</div>
+    {% if waiting %}<h3>Waiting for teams or rest</h3>
+    <div class="game-list">{% for g in waiting %}{% include "partials/game_row.html" with manage=True %}{% endfor %}</div>{% endif %}
+  </div>
+  <div class="panel">
+    <h2>Recently finished</h2>
+    <div class="game-list">{% for g in recent %}{% include "partials/game_row.html" with manage=True %}{% empty %}<p class="muted">Nothing yet.</p>{% endfor %}</div>
+  </div>
+</div>
+{% endblock %}

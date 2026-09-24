@@ -1,0 +1,37 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Format · {{ cat.name }}{% endblock %}
+{% block content %}
+<h1>Format for {{ cat.name }}</h1>
+<p class="muted">{{ team_count }} teams. Pools use snake seeding; playoff brackets cross over pools (A1 vs B2, B1 vs A2 …).</p>
+{% if cat.stages.exists %}
+  <div class="callout {% if has_results %}err{% endif %}">Choosing a format replaces the current stages and games of {{ cat.name }}{% if has_results %}, <strong>including all entered results</strong>{% endif %}. Games will need to be scheduled again.</div>
+{% endif %}
+<form method="post" class="panel">{% csrf_token %}
+  <div class="format-options">
+    {% with d=form.kind %}
+    {% for radio in d %}
+      <label>{{ radio.tag }}{{ radio.choice_label }}
+        <span class="desc">{% cycle "Every team in a pool plays every other team." "Lose once and you're out. Optional placement games." "Teams are eliminated after two losses." "Teams with similar records are paired each round." "Pool play, then the top teams advance to a playoff bracket." "Build stages yourself: any mix of pools and brackets with custom advancement." %}</span>
+      </label>
+    {% endfor %}
+    {% endwith %}
+  </div>
+  <div class="grid-form">
+    <div data-for="rr rr_playoff" class="field">{% include "partials/field.html" with field=form.pools %}</div>
+    <div data-for="rr rr_playoff" class="field">{% include "partials/field.html" with field=form.cycles %}</div>
+    <div data-for="rr" class="field">{% include "partials/field.html" with field=form.games_per_team %}</div>
+    <div data-for="rr_playoff" class="field">{% include "partials/field.html" with field=form.advance_per_pool %}</div>
+    <div data-for="rr_playoff" class="field">{% include "partials/field.html" with field=form.playoff_kind %}</div>
+    <div data-for="se rr_playoff" class="field">{% include "partials/field.html" with field=form.placement %}</div>
+    <div data-for="swiss" class="field">{% include "partials/field.html" with field=form.rounds %}</div>
+  </div>
+  <div data-for="rr_playoff" class="field">{% include "partials/field.html" with field=form.consolation %}</div>
+  <div data-for="de rr_playoff" class="field">{% include "partials/field.html" with field=form.grand_final_reset %}</div>
+  <p data-for="custom" class="muted">A custom format starts empty. Add stages from the format page, then set each slot's team or source (e.g. “Pool A #1”, “Pool play overall #5”).</p>
+  {% if cat.stages.exists %}
+    <div class="field check"><input type="checkbox" name="confirm" id="confirm" value="1"><label for="confirm">Replace the current structure{% if has_results %} and delete results{% endif %}</label></div>
+  {% endif %}
+  <div class="btn-row"><button class="btn" type="submit">{% if cat.stages.exists %}Regenerate{% else %}Create{% endif %} format</button>
+    <a class="btn btn-ghost" href="{% url 'm_format' t.slug %}">Cancel</a></div>
+</form>
+{% endblock %}

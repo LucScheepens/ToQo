@@ -1,0 +1,26 @@
+{% load toqo %}
+<div class="game-row {% if conflicts|get:g.id %}conflict{% endif %}" id="game-{{ g.id }}">
+  <div class="when">
+    <div class="num">#{{ g.number }}</div>
+    <div class="meta">{% if g.start_at %}{{ g.start_at|time:"H:i" }}{% else %}—{% endif %}</div>
+  </div>
+  <div class="meta">
+    {% if g.space %}{{ g.space.name }}<br>{% endif %}
+    {{ g.stage.category.name }}<br>{{ g.title }}
+  </div>
+  <div class="matchup">
+    <div class="side {{ g|side_class:'H' }}"><span class="name {% if not g.home_team %}placeholder{% endif %}">{{ g.home_label }}</span><span class="score">{% if g.home_score is not None %}{{ g.home_score }}{% endif %}</span></div>
+    <div class="side {{ g|side_class:'A' }}"><span class="name {% if not g.away_team %}placeholder{% endif %}">{{ g.away_label }}</span><span class="score">{% if g.away_score is not None %}{{ g.away_score }}{% endif %}</span></div>
+    {% if g.note %}<div class="note">{{ g.note }}</div>{% endif %}
+    {% for c in conflicts|get:g.id %}<div class="note">⚠ {{ c }}</div>{% endfor %}
+  </div>
+  <div class="nowrap">
+    {% if g.status == 'in_progress' %}<span class="badge badge-live dot-live">Live</span>
+    {% elif g.status == 'forfeit' %}{% badge 'forfeit' %}
+    {% elif g.status == 'cancelled' %}{% badge 'cancelled' %}
+    {% elif g.status == 'completed' %}{% badge 'completed' 'Final' %}{% endif %}
+    {% if manage %}
+      <a class="btn btn-sm {% if g.is_resolved %}btn-ghost{% endif %}" href="{% url 'm_game' t.slug g.id %}?next={{ request.get_full_path|urlencode }}">{% if g.has_result %}Edit{% elif g.teams_known %}Result{% else %}Open{% endif %}</a>
+    {% endif %}
+  </div>
+</div>

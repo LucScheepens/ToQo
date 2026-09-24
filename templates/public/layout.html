@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load toqo %}
+{% block title %}{% block page_title %}{% endblock %}{{ t.name }}{% endblock %}
+{% block topnav %}{% if is_admin %}<a href="{% url 'm_dashboard' t.slug %}">Manage</a>{% endif %}{% endblock %}
+{% block body %}
+{% if preview %}<div class="preview-bar">Preview — this tournament is a draft and only visible to admins.</div>{% endif %}
+<div class="public-hero" {% if t.banner %}style="background-image:linear-gradient(rgba(15,118,110,.85),rgba(17,94,89,.9)),url('{{ t.banner.url }}')"{% endif %}>
+  <div class="inner">
+    <h1>{{ t.name }}</h1>
+    <div class="sub">{{ t.get_sport_display }} · {{ t.start_date|date:"M j" }}{% if t.end_date != t.start_date %}–{{ t.end_date|date:"M j" }}{% endif %}, {{ t.end_date|date:"Y" }}{% if t.location %} · {{ t.location }}{% endif %}
+      {% if t.status == 'in_progress' %} · <span class="dot-live">Live</span>{% elif t.status == 'completed' %} · Final results{% endif %}</div>
+    {% if t.tagline %}<div class="sub" style="margin-top:.3rem">{{ t.tagline }}</div>{% endif %}
+    <nav class="public-tabs">
+      <a class="{% if active == 'home' %}on{% endif %}" href="{% url 'public_home' t.slug %}">Home</a>
+      <a class="{% if active == 'schedule' %}on{% endif %}" href="{% url 'public_schedule' t.slug %}">Schedule</a>
+      <a class="{% if active == 'standings' %}on{% endif %}" href="{% url 'public_standings' t.slug %}">Standings</a>
+      <a class="{% if active == 'teams' %}on{% endif %}" href="{% url 'public_teams' t.slug %}">Teams</a>
+    </nav>
+  </div>
+</div>
+<main class="public-main" data-live-version="{{ t.version }}" data-live-url="{% url 'api_version' t.slug %}">
+  {% block content %}{% endblock %}
+</main>
+{% endblock %}

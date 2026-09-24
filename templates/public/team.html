@@ -1,0 +1,14 @@
+{% extends "public/layout.html" %}
+{% block page_title %}{{ team.name }} · {% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><div class="muted small"><a href="{% url 'public_teams' t.slug %}">Teams</a> › {{ team.category.name }}</div><h1>{{ team.name }}</h1></div>
+  <div class="panel" style="margin:0"><span class="stat mono">{{ record.w }}–{{ record.l }}{% if record.d %}–{{ record.d }}{% endif %}</span> <span class="muted small">W–L{% if record.d %}–D{% endif %}</span></div>
+</div>
+{% for d, games in by_day.items %}
+  <h2>{% if d %}{{ d|date:"l, F j" }}{% else %}Time to be announced{% endif %}</h2>
+  <div class="game-list">{% for g in games %}{% include "partials/game_row.html" %}{% endfor %}</div>
+{% empty %}
+  <div class="panel empty">No games scheduled yet.</div>
+{% endfor %}
+{% endblock %}

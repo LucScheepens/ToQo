@@ -1,0 +1,55 @@
+{% extends "public/layout.html" %}
+{% load toqo %}
+{% block content %}
+{% if champions %}
+  <div class="cards" style="margin-bottom:1rem">
+    {% for cat, team in champions %}
+      <div class="panel champion-card"><span class="trophy">🏆</span><div><div class="muted small">{{ cat.name }} champion</div><div style="font-size:1.2rem;font-weight:700">{{ team.name }}</div></div></div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% if live %}
+  <div class="panel"><h2><span class="dot-live"></span>Playing now</h2>
+    <div class="game-list">{% for g in live %}{% include "partials/game_row.html" %}{% endfor %}</div></div>
+{% endif %}
+<div class="split">
+  <div>
+    {% for b in blocks %}
+      <div class="panel block">
+        {% if b.title %}<h2>{{ b.title }}</h2>{% endif %}
+        {% if b.kind == 'info' %}<div class="callout info body">{{ b.body }}</div>{% elif b.body %}<div class="body">{{ b.body }}</div>{% endif %}
+        {% if b.image %}<img src="{{ b.image.url }}" alt="{{ b.title }}">{% endif %}
+        {% if b.kind == 'venues' %}
+          {% for v in venues %}<p><strong>{{ v.name }}</strong>{% if v.address %}<br><span class="muted">{{ v.address }}</span>{% endif %}<br><span class="small muted">{% for s in v.spaces.all %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span></p>{% endfor %}
+        {% elif b.kind == 'categories' %}
+          <ul>{% for cv in cats %}<li><strong>{{ cv.category.name }}</strong> — {{ cv.category.teams.count }} teams{% if cv.category.format_kind %}, {{ cv.category.get_format_kind_display|lower }}{% endif %}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if b.data %}
+          <div class="{% if b.kind == 'sponsors' %}sponsors{% endif %}">
+            {% for d in b.data %}{% if d.url %}<a href="{{ d.url }}" target="_blank" rel="noopener">{{ d.label|default:d.url }}</a>{% else %}<span>{{ d.label }}</span>{% endif %}{% if b.kind != 'sponsors' %}<br>{% endif %}{% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="panel empty">Welcome! Check the schedule and standings.</div>
+    {% endfor %}
+  </div>
+  <div>
+    <div class="panel">
+      <h2>At a glance</h2>
+      <dl class="kv">
+        <dt>Teams</dt><dd>{{ team_count }}</dd>
+        <dt>Categories</dt><dd>{{ cats|length }}</dd>
+        <dt>Games</dt><dd>{{ done }} / {{ total }} played</dd>
+      </dl>
+      <div class="progress"><span style="width:{% widthratio done total|default:1 100 %}%"></span></div>
+    </div>
+    <div class="panel">
+      <h2>Categories</h2>
+      {% for cv in cats %}
+        <p><strong>{{ cv.category.name }}</strong><br><span class="small muted">{% if cv.finished %}Finished{% elif cv.current %}{{ cv.current.stage.name }} — {{ cv.current.done }}/{{ cv.current.total }} games{% else %}Coming soon{% endif %}</span></p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Review &amp; publish{% endblock %}
+{% block content %}
+<h1>Review &amp; publish</h1>
+{% if t.is_live %}
+  <div class="callout ok">The tournament is <strong>{{ t.get_status_display|lower }}</strong> since {{ t.published_at|date:"M j, H:i" }}. <a href="{% url 'm_share' t.slug %}">Share it →</a></div>
+{% endif %}
+<div class="split">
+  <div>
+    <div class="panel">
+      <h2>Checks</h2>
+      {% for e in errors %}<div class="callout err">✕ {{ e }}</div>{% endfor %}
+      {% for w in warnings %}<div class="callout">! {{ w }}</div>{% endfor %}
+      {% if not errors and not warnings %}<div class="callout ok">✓ Everything looks good.</div>{% endif %}
+    </div>
+    <div class="panel">
+      <h2>Preview</h2>
+      <p class="muted">See exactly what participants will see.{% if not t.is_live %} Only admins can open these pages until you publish.{% endif %}</p>
+      <div class="btn-row">
+        <a class="btn btn-ghost" target="_blank" href="{% url 'public_home' t.slug %}">Home ↗</a>
+        <a class="btn btn-ghost" target="_blank" href="{% url 'public_teams' t.slug %}">Teams ↗</a>
+        <a class="btn btn-ghost" target="_blank" href="{% url 'public_schedule' t.slug %}">Schedule ↗</a>
+        <a class="btn btn-ghost" target="_blank" href="{% url 'public_standings' t.slug %}">Standings ↗</a>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    {% if not t.is_live %}
+      <h2>Publish</h2>
+      <p>Publishing makes the tournament visible ({{ t.get_visibility_display|lower }}) and enables score entry.</p>
+      {% if is_owner %}
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="publish">
+          <button class="btn" type="submit" {% if errors %}disabled title="Fix the errors first"{% endif %}>Publish tournament</button></form>
+      {% else %}<p class="muted">Only the owner can publish.</p>{% endif %}
+    {% else %}
+      <h2>Published</h2>
+      <p class="muted">You can go back to draft only while no results have been entered.</p>
+      <form method="post" data-confirm="Unpublish? The public pages will be hidden.">{% csrf_token %}<input type="hidden" name="action" value="unpublish"><button class="btn btn-ghost">Back to draft</button></form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

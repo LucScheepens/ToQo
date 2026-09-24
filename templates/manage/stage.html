@@ -1,0 +1,107 @@
+{% extends "manage/layout.html" %}
+{% load toqo %}
+{% block page_title %}{{ stage.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="muted small"><a href="{% url 'm_format' t.slug %}">Format</a> › {{ cat.name }}</div>
+    <h1>Stage {{ stage.order }}: {{ stage.name }} {% badge status %}</h1>
+    <div class="muted">{{ stage.get_kind_display }} · {{ games|length }} games</div>
+  </div>
+</div>
+
+{% if unassigned %}<div class="callout">Not placed in this stage yet: {% for x in unassigned %}{{ x.name }}{% if not forloop.last %}, {% endif %}{% endfor %}. Pick them in a slot below{% if stage.kind == 'rr' or stage.kind == 'swiss' %} or add slots{% endif %}.</div>{% endif %}
+
+<div class="split">
+<div>
+{% for p in pools %}
+  <div class="panel">
+    <div class="panel-head">
+      <form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="rename_pool"><input type="hidden" name="pool" value="{{ p.pool.id }}">
+        <input type="text" name="name" value="{{ p.pool.name }}" style="font-weight:700"><button class="btn btn-sm btn-ghost">Rename</button></form>
+      <div class="btn-row">
+        <form method="post" class="row-form" data-confirm="Changing the number of slots rebuilds this stage's games. Continue?">{% csrf_token %}<input type="hidden" name="action" value="resize"><input type="hidden" name="pool" value="{{ p.pool.id }}">
+          <input type="number" name="slots" min="1" value="{{ p.entries|length }}" style="width:4.5rem"><button class="btn btn-sm btn-ghost">Set slots</button></form>
+        {% if pools|length > 1 %}<form method="post" data-confirm="Delete {{ p.pool.name }}?">{% csrf_token %}<input type="hidden" name="action" value="delete_pool"><input type="hidden" name="pool" value="{{ p.pool.id }}"><button class="btn btn-sm btn-ghost btn-danger">Delete</button></form>{% endif %}
+      </div>
+    </div>
+    <table>
+      <thead><tr><th style="width:3rem">Seed</th>{% if not is_first %}<th>Source (advancement)</th>{% endif %}<th>Team</th></tr></thead>
+      <tbody>
+      {% for e, src in p.entries %}
+        <tr>
+          <td class="num">{{ e.position }}</td>
+          {% if not is_first %}
+          <td>
+            <form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="entry"><input type="hidden" name="entry" value="{{ e.id }}"><input type="hidden" name="team" value="__keep__">
+              <select name="source" onchange="this.form.submit()">
+                <option value="">— none —</option>
+                {% for val, label in source_options %}<option value="{{ val }}" {% if val == src %}selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+            </form>
+          </td>
+          {% endif %}
+          <td>
+            <form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="entry"><input type="hidden" name="entry" value="{{ e.id }}">
+              <select name="team" onchange="this.form.submit()">
+                <option value="">{% if is_first %}— empty —{% else %}{% if e.has_source %}(from standings){% else %}— empty —{% endif %}{% endif %}</option>
+                {% for team in teams %}<option value="{{ team.id }}" {% if team.id == e.team_id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}
+              </select>
+            </form>
+            {% if e.locked %}
+              <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="unlock"><input type="hidden" name="entry" value="{{ e.id }}">
+                <span class="badge badge-warn" title="Manually set — advancement won't overwrite it">manual</span> <button class="linklike small">use standings</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if is_first %}<p class="muted small">Picking a team that is already in another slot of this stage swaps the two.</p>{% endif %}
+  </div>
+{% endfor %}
+<form method="post" class="btn-row">{% csrf_token %}<input type="hidden" name="action" value="add_pool"><button class="btn btn-ghost btn-sm">+ Add {% if stage.is_bracket %}flight{% else %}pool{% endif %}</button></form>
+
+<div class="panel">
+  <h2>Games in this stage</h2>
+  <div class="game-list">{% for g in games %}{% if not g.is_bye %}{% include "partials/game_row.html" with manage=True %}{% endif %}{% empty %}<p class="muted">No games — add slots.</p>{% endfor %}</div>
+</div>
+</div>
+
+<div>
+  <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="action" value="settings">
+    <h2>Stage settings</h2>
+    {% include "partials/field.html" with field=form.name %}
+    {% include "partials/field.html" with field=form.game_minutes %}
+    {% if stage.kind == 'rr' %}{% include "partials/field.html" with field=form.cycles %}{% include "partials/field.html" with field=form.games_per_team %}{% endif %}
+    {% if stage.kind == 'se' %}{% include "partials/field.html" with field=form.placement %}{% endif %}
+    {% if stage.kind == 'de' %}{% include "partials/field.html" with field=form.grand_final_reset %}{% endif %}
+    {% if stage.kind == 'swiss' %}{% include "partials/field.html" with field=form.rounds %}{% endif %}
+    {% if not stage.is_bracket %}
+      <h3>Tiebreakers</h3>
+      <p class="muted small">Applied in order. Remaining ties fall back to seed.</p>
+      {% for current in tbs %}
+        <div class="field check"><span class="muted small" style="width:1.2rem">{{ forloop.counter }}.</span><select name="tb{{ forloop.counter0 }}"><option value="">—</option>
+          {% for key, label in tiebreaker_choices %}<option value="{{ key }}" {% if key == current %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      {% endfor %}
+    {% endif %}
+    <div class="field check"><input type="checkbox" name="confirm" id="confirm" value="1"><label for="confirm" class="small">Allow rebuilding games even if results exist</label></div>
+    <button class="btn" type="submit">Save stage</button>
+  </form>
+
+  <div class="panel">
+    <h3>Add a stage after this one</h3>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_stage">
+      {% for field in add_form %}{% include "partials/field.html" %}{% endfor %}
+      <button class="btn btn-ghost" type="submit">Add stage</button>
+    </form>
+  </div>
+
+  <form method="post" class="panel" data-confirm="Delete this stage and all its games?">{% csrf_token %}<input type="hidden" name="action" value="delete_stage"><input type="hidden" name="confirm" value="1">
+    <h3>Delete stage</h3>
+    <p class="muted small">Later stages that take teams from this stage will lose their sources.</p>
+    <button class="btn btn-ghost btn-danger" type="submit">Delete {{ stage.name }}</button>
+  </form>
+</div>
+</div>
+{% endblock %}

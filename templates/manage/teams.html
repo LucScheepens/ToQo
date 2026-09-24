@@ -1,0 +1,60 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Teams{% endblock %}
+{% block content %}
+<h1>Teams</h1>
+{% if cats|length > 1 %}
+<div class="tabs">{% for c in cats %}<a class="{% if c == cat %}on{% endif %}" href="?cat={{ c.id }}">{{ c.name }} <span class="muted">({{ c.teams.count }})</span></a>{% endfor %}</div>
+{% endif %}
+{% if cat %}
+  {% if cat.stages.exists %}
+    <div class="callout {% if has_results %}err{% endif %}">
+      {% if has_results %}<strong>{{ cat.name }} already has results.</strong> Adding, removing or reseeding teams regenerates its format and <strong>deletes those results</strong>. Tick “I understand” on the form to proceed.
+      {% elif cat.format_kind == 'custom' %}This category uses a custom structure: new teams must be placed on the first stage manually.
+      {% else %}Adding, removing or reseeding teams regenerates the pools/brackets for {{ cat.name }} and unschedules its games.{% endif %}
+    </div>
+  {% endif %}
+  <div class="split">
+    <div class="panel">
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="seeds">
+      <div class="panel-head"><h2>{{ team_list|length }} team{{ team_list|length|pluralize }}</h2>{% if team_list %}<button class="btn btn-sm btn-ghost">Save seeds</button>{% endif %}</div>
+      {% if has_results %}<label class="small"><input type="checkbox" name="confirm" value="1"> I understand results will be deleted</label>{% endif %}
+      <table>
+        <thead><tr><th style="width:5rem">Seed</th><th>Team</th><th>Contact</th><th></th></tr></thead>
+        <tbody>
+        {% for team in team_list %}
+          <tr>
+            <td><input type="number" min="1" name="seed_{{ team.id }}" value="{{ team.seed|default_if_none:'' }}" style="width:4.5rem"></td>
+            <td><strong>{{ team.name }}</strong>{% if team.short_name %} <span class="muted">({{ team.short_name }})</span>{% endif %}</td>
+            <td class="muted small">{{ team.contact }}</td>
+            <td class="nowrap"><a class="btn btn-sm btn-ghost" href="{% url 'm_team_edit' t.slug team.id %}">Edit</a>
+              <button class="btn btn-sm btn-ghost btn-danger" form="del-{{ team.id }}">Remove</button></td>
+          </tr>
+        {% empty %}<tr><td colspan="4" class="empty">No teams yet — add them on the right.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      </form>
+      {% for team in team_list %}
+        <form method="post" id="del-{{ team.id }}" data-confirm="Remove {{ team.name }}?">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ team.id }}">{% if has_results %}<input type="hidden" name="confirm" value="1">{% endif %}</form>
+      {% endfor %}
+      <p class="muted small">Seeds control pool distribution (snake order) and bracket matchups. Unseeded teams go last, in the order added.</p>
+    </div>
+    <div>
+      <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="action" value="add">
+        <h3>Add a team</h3>
+        {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+        {% if has_results %}<label class="small"><input type="checkbox" name="confirm" value="1"> I understand results will be deleted</label>{% endif %}
+        <button class="btn" type="submit">Add team</button>
+      </form>
+      <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="action" value="bulk">
+        <h3>Add many</h3>
+        {{ bulk.names }}
+        {% if has_results %}<label class="small"><input type="checkbox" name="confirm" value="1"> I understand results will be deleted</label>{% endif %}
+        <div class="btn-row"><button class="btn" type="submit">Add teams</button></div>
+      </form>
+    </div>
+  </div>
+  <a class="btn btn-ghost" href="{% url 'm_format' t.slug %}">Next: format →</a>
+{% else %}
+  <div class="panel empty">Create a category first.</div>
+{% endif %}
+{% endblock %}

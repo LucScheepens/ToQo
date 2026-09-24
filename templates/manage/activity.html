@@ -1,0 +1,11 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Activity{% endblock %}
+{% block content %}
+<h1>Activity</h1>
+<div class="panel">
+  <ul class="activity">
+    {% for a in items %}<li><span class="when">{{ a.created_at|date:"M j H:i" }}</span><span>{{ a.text }}{% if a.user %} <span class="muted">· {{ a.user.username }}</span>{% endif %}</span></li>
+    {% empty %}<li class="muted">Nothing yet.</li>{% endfor %}
+  </ul>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Log in · ToQo{% endblock %}
+{% block body %}
+<div class="auth panel">
+  <h1>Log in</h1>
+  <form method="post">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="callout err">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+    {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="btn" type="submit">Log in</button>
+  </form>
+  <p class="muted small">No account? <a href="{% url 'signup' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Sign up</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "manage/layout.html" %}
+{% load toqo %}
+{% block page_title %}Format{% endblock %}
+{% block content %}
+<h1>Format &amp; stages</h1>
+<p class="muted">Each category runs its own format. A format creates connected <strong>stages</strong> (e.g. pool play → playoffs): teams advance between stages according to the standings.</p>
+{% for cv in cats %}
+<div class="panel">
+  <div class="panel-head">
+    <h2>{{ cv.category.name }} <span class="muted small">· {{ cv.category.teams.count }} teams · {{ cv.category.get_format_kind_display|default:"no format" }}</span></h2>
+    <div class="btn-row">
+      <a class="btn btn-sm" href="{% url 'm_format_category' t.slug cv.category.id %}">{% if cv.stages %}Change format{% else %}Choose format{% endif %}</a>
+      <a class="btn btn-sm btn-ghost" href="{% url 'm_add_stage' t.slug cv.category.id %}">+ Add stage</a>
+    </div>
+  </div>
+  {% if cv.stages %}
+  <table>
+    <thead><tr><th>#</th><th>Stage</th><th>Type</th><th>Pools / flights</th><th class="num">Games</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for sv in cv.stages %}
+      <tr>
+        <td>{{ sv.stage.order }}</td>
+        <td><strong>{{ sv.stage.name }}</strong></td>
+        <td>{{ sv.stage.get_kind_display }}</td>
+        <td class="small">{% for p in sv.pools %}{{ p.pool.name }} ({{ p.rows|length }}/{{ p.pool.entries.count }}){% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td class="num">{{ sv.total }}</td>
+        <td>{% badge sv.status %}</td>
+        <td><a class="btn btn-sm btn-ghost" href="{% url 'm_stage' t.slug sv.stage.id %}">Configure</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No stages yet.</p>
+  {% endif %}
+</div>
+{% endfor %}
+<a class="btn btn-ghost" href="{% url 'm_venues' t.slug %}">Next: venues →</a>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "manage/layout.html" %}
+{% load toqo %}
+{% block page_title %}Dashboard{% endblock %}
+{% block main_attrs %}data-live-version="{{ t.version }}" data-live-url="{% url 'api_version' t.slug %}"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ t.name }}</h1>
+    <div class="muted">{{ t.get_sport_display }} · {{ t.start_date|date:"D M j" }}–{{ t.end_date|date:"D M j, Y" }}{% if t.location %} · {{ t.location }}{% endif %}</div>
+  </div>
+  <div class="btn-row">
+    <a class="btn btn-ghost" href="{% url 'public_home' t.slug %}" target="_blank">{% if t.is_live %}Public site{% else %}Preview{% endif %} ↗</a>
+    {% if not t.is_live and is_admin %}<a class="btn" href="{% url 'm_review' t.slug %}">Review &amp; publish</a>{% endif %}
+  </div>
+</div>
+
+<div class="cards">
+  <div class="panel">
+    <div class="muted small">Status</div>
+    <div class="stat">{% badge t.status %}</div>
+    <div class="small muted">{% if t.status == 'draft' %}Only admins can see the tournament.{% elif t.status == 'completed' %}Finished {{ t.completed_at|date:"M j" }}.{% else %}{{ t.get_visibility_display }}{% endif %}</div>
+  </div>
+  <div class="panel">
+    <div class="muted small">Games completed</div>
+    <div class="stat mono">{{ done }} <span class="muted" style="font-size:1rem">/ {{ total }}</span></div>
+    <div class="progress"><span style="width:{% widthratio done total|default:1 100 %}%"></span></div>
+  </div>
+  <div class="panel">
+    <div class="muted small">Current stage</div>
+    {% for cv in cats %}
+      <div class="small" style="margin:.2rem 0"><strong>{{ cv.category.name }}:</strong>
+        {% if cv.finished %}Finished — 🏆 {{ cv.final.0.1.name }}{% elif cv.current %}{{ cv.current.stage.name }} {% badge cv.current.status %} <span class="muted">{{ cv.current.done }}/{{ cv.current.total }}</span>{% else %}<span class="muted">No format yet</span>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="split">
+  <div>
+    <div class="panel">
+      <h2>Next actions</h2>
+      <ul class="actions">
+        {% for a in actions %}<li><a class="{% if a.primary %}primary{% endif %}" href="{{ a.url }}">{{ a.text }} →</a></li>
+        {% empty %}<li class="muted">Nothing needs your attention right now.</li>{% endfor %}
+      </ul>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Up next</h2><a class="small" href="{% url 'm_schedule' t.slug %}?view=list&status=open">Full schedule →</a></div>
+      <div class="game-list">
+        {% for g in upcoming %}{% include "partials/game_row.html" with manage=True %}
+        {% empty %}<div class="muted">No games waiting for a result.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+  <div>
+    {% if dash_steps %}
+    <div class="panel">
+      <h2>Setup</h2>
+      <ul class="checklist">
+        {% for s in dash_steps %}
+          <li class="step {% if s.done %}done{% endif %}"><span class="tick">{% if s.done %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
+            <a href="{{ s.url }}">{{ s.label }}</a>{% if s.detail %}<span class="muted small">{{ s.detail }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <div class="panel">
+      <div class="panel-head"><h2>Activity</h2><a class="small" href="{% url 'm_activity' t.slug %}">All →</a></div>
+      <ul class="activity">
+        {% for a in activity %}<li><span class="when">{{ a.created_at|date:"M j H:i" }}</span><span>{{ a.text }}{% if a.user %} <span class="muted">· {{ a.user.username }}</span>{% endif %}</span></li>
+        {% empty %}<li class="muted">Nothing yet.</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

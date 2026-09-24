@@ -1,0 +1,10 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Add stage{% endblock %}
+{% block content %}
+<h1>Add a stage to {{ cat.name }}</h1>
+<p class="muted">The new stage becomes stage {{ cat.stages.count|add:1 }}. {% if cat.stages.exists %}Its slots can be fed from earlier stages (e.g. “Pool A #1”).{% else %}As the first stage, you'll place teams into its slots directly.{% endif %}</p>
+<form method="post" class="panel" style="max-width:34rem">{% csrf_token %}
+  {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+  <div class="btn-row"><button class="btn" type="submit">Add stage</button><a class="btn btn-ghost" href="{% url 'm_format' t.slug %}">Cancel</a></div>
+</form>
+{% endblock %}

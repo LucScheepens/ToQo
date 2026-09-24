@@ -1,0 +1,49 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}Settings{% endblock %}
+{% block content %}
+<h1>Tournament settings</h1>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+  <input type="hidden" name="action" value="save">
+  <fieldset class="panel"><legend>Basic information</legend>
+    <div class="grid-form">
+      {% include "partials/field.html" with field=form.name %}
+      {% include "partials/field.html" with field=form.slug %}
+      {% include "partials/field.html" with field=form.sport %}
+      {% include "partials/field.html" with field=form.start_date %}
+      {% include "partials/field.html" with field=form.end_date %}
+      {% include "partials/field.html" with field=form.location %}
+    </div>
+    {% include "partials/field.html" with field=form.tagline %}
+    {% include "partials/field.html" with field=form.banner %}
+    {% include "partials/field.html" with field=form.visibility %}
+  </fieldset>
+  <fieldset class="panel"><legend>Scoring</legend>
+    <div class="grid-form">
+      {% include "partials/field.html" with field=form.points_win %}
+      {% include "partials/field.html" with field=form.points_draw %}
+      {% include "partials/field.html" with field=form.points_loss %}
+      {% include "partials/field.html" with field=form.forfeit_win_score %}
+      {% include "partials/field.html" with field=form.forfeit_loss_score %}
+    </div>
+    {% include "partials/field.html" with field=form.allow_draws %}
+  </fieldset>
+  <fieldset class="panel"><legend>Schedule mode</legend>
+    {% include "partials/field.html" with field=form.schedule_mode %}
+    <p class="muted small">“Next available space” suits continuous play (badminton, squash): games are started on the next free {{ t.space_noun|lower }} from the queue board instead of fixed times.</p>
+  </fieldset>
+  <button class="btn" type="submit">Save settings</button>
+</form>
+
+{% if is_owner %}
+<hr>
+<div class="panel">
+  <h2>Delete tournament</h2>
+  <p class="muted">This permanently deletes the tournament, its teams, schedule and results.</p>
+  <form method="post" class="row-form" data-confirm="Delete this tournament permanently?">{% csrf_token %}
+    <input type="hidden" name="action" value="delete">
+    <div class="field"><label>Type “{{ t.name }}” to confirm</label><input type="text" name="confirm_name"></div>
+    <button class="btn btn-danger" type="submit">Delete</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

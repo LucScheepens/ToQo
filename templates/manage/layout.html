@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load toqo %}
+{% block title %}{% block page_title %}{% endblock %} · {{ t.name }} · ToQo{% endblock %}
+{% block topnav %}<a href="{% url 'public_home' t.slug %}" target="_blank">View public site ↗</a>{% endblock %}
+{% block body %}
+<div class="manage">
+  <aside class="sidebar">
+    <div class="side-head">
+      <div class="side-title">{{ t.name }}</div>
+      <div class="side-meta">{% badge t.status %} <span class="muted">{{ t.start_date|date:"M j" }}–{{ t.end_date|date:"M j, Y" }}</span></div>
+    </div>
+    <nav class="side-nav">
+      <a class="{% if active == 'dashboard' %}on{% endif %}" href="{% url 'm_dashboard' t.slug %}">Dashboard</a>
+      {% if steps %}
+      <div class="side-group">Setup</div>
+      {% for s in steps %}
+        <a class="step {% if s.done %}done{% endif %}" href="{{ s.url }}"><span class="tick">{% if s.done %}✓{% else %}{{ forloop.counter }}{% endif %}</span>{{ s.label }}</a>
+      {% endfor %}
+      {% endif %}
+      <div class="side-group">Run</div>
+      <a class="{% if active == 'schedule' %}on{% endif %}" href="{% url 'm_schedule' t.slug %}">Schedule &amp; results</a>
+      {% if t.schedule_mode == 'queue' %}<a class="{% if active == 'queue' %}on{% endif %}" href="{% url 'm_queue' t.slug %}">Queue board</a>{% endif %}
+      <a class="{% if active == 'standings' %}on{% endif %}" href="{% url 'm_standings' t.slug %}">Standings &amp; brackets</a>
+      {% if is_admin %}
+      <div class="side-group">Event</div>
+      <a class="{% if active == 'home' %}on{% endif %}" href="{% url 'm_home' t.slug %}">Public home page</a>
+      <a class="{% if active == 'share' %}on{% endif %}" href="{% url 'm_share' t.slug %}">Share &amp; QR code</a>
+      {% if is_owner %}<a class="{% if active == 'admins' %}on{% endif %}" href="{% url 'm_admins' t.slug %}">Admins</a>{% endif %}
+      <a class="{% if active == 'settings' %}on{% endif %}" href="{% url 'm_settings' t.slug %}">Settings</a>
+      {% endif %}
+    </nav>
+  </aside>
+  <main class="content" {% block main_attrs %}{% endblock %}>
+    {% include "partials/messages.html" %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

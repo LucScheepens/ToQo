@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}New tournament · ToQo{% endblock %}
+{% block body %}
+<div class="hero-home" style="max-width:640px">
+  <h1>New tournament</h1>
+  <p class="muted">You can change all of this later. The tournament stays a private draft until you publish it.</p>
+  <form method="post" class="panel">{% csrf_token %}
+    {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+    <button class="btn" type="submit">Create tournament</button>
+  </form>
+</div>
+{% endblock %}

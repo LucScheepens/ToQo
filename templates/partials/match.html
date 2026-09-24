@@ -1,0 +1,9 @@
+{% load toqo %}
+<div class="match {% if g.is_bye %}bye{% endif %} {% if g.place_winner == 1 and g.has_result %}champion{% endif %}">
+  <div class="m-head">
+    <span>{% if manage and not g.is_bye %}<a href="{% url 'm_game' t.slug g.id %}?next={{ request.get_full_path|urlencode }}">#{{ g.number }} {{ g.code }}</a>{% else %}{% if not g.is_bye %}#{{ g.number }} {% endif %}{{ g.code }}{% endif %}</span>
+    <span>{% if g.is_bye %}bye{% elif g.status == 'in_progress' %}<span class="dot-live">live</span>{% elif g.if_necessary and g.status == 'cancelled' %}not needed{% elif g.start_at %}{{ g.start_at|date:"D H:i" }}{% if g.space %} · {{ g.space.name }}{% endif %}{% endif %}</span>
+  </div>
+  <div class="side {{ g|side_class:'H' }}"><span class="name {% if not g.home_team %}placeholder{% endif %}">{{ g.home_label }}</span><span class="score">{% if g.home_score is not None %}{{ g.home_score }}{% endif %}</span></div>
+  <div class="side {{ g|side_class:'A' }}"><span class="name {% if not g.away_team %}placeholder{% endif %}">{{ g.away_label }}</span><span class="score">{% if g.away_score is not None %}{{ g.away_score }}{% endif %}</span></div>
+</div>

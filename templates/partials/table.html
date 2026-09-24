@@ -1,0 +1,27 @@
+{% load toqo %}
+<div class="table-wrap">
+<table class="standings">
+  <thead><tr>
+    <th class="num">#</th><th>Team</th>
+    {% if bracket %}<th></th>{% else %}
+    <th class="num">GP</th><th class="num">W</th>{% if t.allow_draws %}<th class="num">D</th>{% endif %}<th class="num">L</th>
+    <th class="num">PF</th><th class="num">PA</th><th class="num">+/-</th>{% if swiss %}<th class="num">Buch.</th>{% endif %}<th class="num">Pts</th>
+    {% endif %}
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{% if r.tie_unresolved %}flag{% endif %}">
+      <td class="num">{% if r.shared %}T{% endif %}{{ r.rank }}</td>
+      <td class="team">{% if manage %}{{ r.team.name }}{% else %}<a href="{% url 'public_team' t.slug r.team.id %}">{{ r.team.name }}</a>{% endif %}
+        {% if r.tie_unresolved and manage %}<span class="badge badge-warn" title="Still tied after all tiebreakers — ordered by seed">tie</span>{% endif %}</td>
+      {% if bracket %}<td class="muted small">{% if r.alive %}still in{% endif %}</td>{% else %}
+      <td class="num">{{ r.gp }}</td><td class="num">{{ r.w }}</td>{% if t.allow_draws %}<td class="num">{{ r.d }}</td>{% endif %}<td class="num">{{ r.l }}</td>
+      <td class="num">{{ r.pf }}</td><td class="num">{{ r.pa }}</td><td class="num">{% if r.pd > 0 %}+{% endif %}{{ r.pd }}</td>{% if swiss %}<td class="num">{{ r.buchholz }}</td>{% endif %}<td class="num"><strong>{{ r.pts }}</strong></td>
+      {% endif %}
+    </tr>
+  {% empty %}
+    <tr><td colspan="10" class="muted">No teams yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>

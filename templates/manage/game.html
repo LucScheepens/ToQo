@@ -1,0 +1,116 @@
+{% extends "manage/layout.html" %}
+{% load toqo %}
+{% block page_title %}Game #{{ game.number }}{% endblock %}
+{% block content %}
+<div class="muted small"><a href="{{ next }}">← Back</a></div>
+<div class="page-head">
+  <div>
+    <h1>Game #{{ game.number }} <span class="muted" style="font-weight:400">{{ game.code }}</span> {% badge game.status %}</h1>
+    <div class="muted">{{ game.stage.category.name }} · {{ game.stage.name }} · {{ game.title }}</div>
+    <div class="muted">{% if game.start_at %}{{ game.start_at|date:"D M j, H:i" }}{% else %}No time set{% endif %}{% if game.space %} · {{ game.space.full_name }}{% endif %} · {{ game.duration }} min</div>
+  </div>
+</div>
+{% for c in conflicts %}<div class="callout">⚠ {{ c }}</div>{% endfor %}
+
+{% if affected %}
+<div class="panel callout err">
+  <h2 style="margin-top:0">This change affects results that were already entered</h2>
+  <p>Because the teams in these games would change, their results will be cleared:</p>
+  <ul>{% for a in affected %}<li>#{{ a.number }} {{ a.title }} ({{ a.stage }}): {{ a.teams }} — {{ a.result }}</li>{% endfor %}</ul>
+  <form method="post" class="btn-row">{% csrf_token %}
+    {% for k, v in pending.items %}{% if k != 'csrfmiddlewaretoken' and k != 'confirm' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+    <input type="hidden" name="confirm" value="1">
+    <button class="btn btn-danger" type="submit">Apply and clear those results</button>
+    <a class="btn btn-ghost" href="{{ request.path }}?next={{ next|urlencode }}">Cancel</a>
+  </form>
+</div>
+{% endif %}
+
+<div class="split">
+<div>
+  <div class="panel">
+    <h2>Result</h2>
+    {% if game.is_bye %}
+      <p class="muted">This is a bye — the team advances automatically.</p>
+    {% elif not game.teams_known %}
+      <p class="muted">Waiting for teams: {{ game.home_label }} vs {{ game.away_label }}.</p>
+    {% elif game.if_necessary and game.status == 'cancelled' %}
+      <p class="muted">Not necessary — the winners-bracket champion won the grand final.</p>
+    {% elif t.status == 'draft' %}
+      <p class="callout info">Publish the tournament to start entering results. <a href="{% url 'm_review' t.slug %}">Review &amp; publish →</a></p>
+    {% else %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="result"><input type="hidden" name="next" value="{{ next }}">
+        <table>
+          <tr><td><strong>{{ game.home_team.name }}</strong> <span class="muted small">home</span></td><td style="width:7rem"><input type="number" name="home_score" min="0" value="{{ form.home_score.value|default_if_none:'' }}" required style="width:6rem;font-size:1.2rem" autofocus></td></tr>
+          <tr><td><strong>{{ game.away_team.name }}</strong> <span class="muted small">away</span></td><td><input type="number" name="away_score" min="0" value="{{ form.away_score.value|default_if_none:'' }}" required style="width:6rem;font-size:1.2rem"></td></tr>
+        </table>
+        {% if form.errors %}<div class="callout err">Enter both scores (0 or more).</div>{% endif %}
+        <div class="field" style="margin-top:.6rem"><label>If the score is tied, the winner is{% if not is_elim and t.allow_draws %} (leave empty for a draw){% endif %}</label>
+          <select name="winner_side"><option value="">—</option><option value="H" {% if form.winner_side.value == 'H' %}selected{% endif %}>{{ game.home_team.name }}</option><option value="A" {% if form.winner_side.value == 'A' %}selected{% endif %}>{{ game.away_team.name }}</option></select></div>
+        <button class="btn" type="submit">{% if game.has_result %}Update result{% else %}Submit result{% endif %}</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>Note</h2>
+    <form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="note"><input type="hidden" name="next" value="{{ next }}">
+      <input type="text" name="note" value="{{ game.note }}" placeholder="e.g. Delayed 15 minutes due to rain" style="flex:1;min-width:16rem"><button class="btn btn-ghost">Save note</button></form>
+    <p class="muted small">Notes are shown on the public schedule.</p>
+  </div>
+</div>
+
+<div>
+  <div class="panel">
+    <h2>Game options</h2>
+    {% if game.teams_known and not game.is_bye and t.status != 'draft' %}
+      <form method="post" class="btn-row">{% csrf_token %}<input type="hidden" name="action" value="forfeit"><input type="hidden" name="next" value="{{ next }}">
+        <select name="side"><option value="H">{{ game.home_team.name }} forfeits</option><option value="A">{{ game.away_team.name }} forfeits</option></select>
+        <button class="btn btn-ghost btn-sm">Record forfeit</button></form>
+    {% endif %}
+    {% if is_admin and not is_elim and game.status != 'cancelled' %}
+      <form method="post" data-confirm="Cancel this game? Neither team gets points.">{% csrf_token %}<input type="hidden" name="action" value="cancel"><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-ghost btn-sm">Cancel game</button></form>
+    {% endif %}
+    {% if game.is_resolved and not game.if_necessary %}
+      <form method="post" data-confirm="Clear the result of this game?" style="margin-top:.4rem">{% csrf_token %}<input type="hidden" name="action" value="clear"><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-ghost btn-sm btn-danger">Clear result</button></form>
+    {% endif %}
+    {% if is_admin %}
+      <hr>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="swap"><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-ghost btn-sm">⇄ Change home team</button></form>
+      {% if not game.has_result %}
+      <details style="margin-top:.6rem"><summary class="small">Change teams</summary>
+        <form method="post" class="row-form" style="margin-top:.4rem">{% csrf_token %}<input type="hidden" name="action" value="teams"><input type="hidden" name="next" value="{{ next }}">
+          <select name="home">{% for x in cat_teams %}<option value="{{ x.id }}" {% if x.id == game.home_team_id %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+          <span>vs</span>
+          <select name="away">{% for x in cat_teams %}<option value="{{ x.id }}" {% if x.id == game.away_team_id %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+          <button class="btn btn-sm btn-ghost">Set teams</button></form>
+        {% if game.manual_teams %}<form method="post" style="margin-top:.4rem">{% csrf_token %}<input type="hidden" name="action" value="restore"><input type="hidden" name="next" value="{{ next }}"><button class="linklike small">Restore automatic teams</button></form>{% endif %}
+      </details>
+      {% endif %}
+      {% if t.schedule_mode == 'timed' %}
+      <hr>
+      <h3>Time &amp; {{ t.space_noun|lower }}</h3>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="move"><input type="hidden" name="next" value="{{ next }}">
+        <div class="row-form">
+          <input type="date" name="date" value="{% if game.start_at %}{{ game.start_at|date:'Y-m-d' }}{% else %}{{ t.start_date|date:'Y-m-d' }}{% endif %}">
+          <input type="time" name="time" value="{{ game.start_at|time:'H:i' }}">
+          <select name="space">{% for s in spaces %}<option value="{{ s.id }}" {% if s.id == game.space_id %}selected{% endif %}>{{ s.full_name }}</option>{% endfor %}</select>
+        </div>
+        <div class="btn-row"><button class="btn btn-sm">Move</button><button class="btn btn-sm btn-ghost" name="unschedule" value="1">Unschedule</button></div>
+      </form>
+      {% endif %}
+    {% endif %}
+    {% if t.schedule_mode == 'queue' and game.teams_known and not game.is_resolved %}
+      <hr>
+      {% if game.status == 'in_progress' %}
+        <p>Playing on <strong>{{ game.space.name }}</strong>.</p>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="stop"><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-ghost btn-sm">Put back in queue</button></form>
+      {% elif t.is_live %}
+        <form method="post" class="row-form">{% csrf_token %}<input type="hidden" name="action" value="start"><input type="hidden" name="next" value="{{ next }}">
+          <select name="space">{% for s in spaces %}<option value="{{ s.id }}">{{ s.full_name }}</option>{% endfor %}</select><button class="btn btn-sm">Start on {{ t.space_noun|lower }}</button></form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "public/layout.html" %}
+{% load toqo %}
+{% block page_title %}Standings · {% endblock %}
+{% block content %}
+{% if cats|length > 1 %}<div class="tabs">{% for cv in cats %}<a href="#cat-{{ cv.category.id }}">{{ cv.category.name }}</a>{% endfor %}</div>{% endif %}
+{% for cv in cats %}
+<section id="cat-{{ cv.category.id }}">
+  {% if cats|length > 1 %}<h2 style="font-size:1.4rem">{{ cv.category.name }}</h2>{% endif %}
+  {% if cv.final %}
+    <div class="panel">
+      <h3>Final standings</h3>
+      <table class="standings"><tbody>
+        {% for place, team, flight in cv.final %}<tr><td class="num" style="width:3rem">{% if place == 1 %}🏆{% else %}{{ place|ordinal }}{% endif %}</td><td class="team"><a href="{% url 'public_team' t.slug team.id %}">{{ team.name }}</a></td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  {% endif %}
+  {% for sv in cv.stages %}
+    <div class="panel">
+      <div class="panel-head"><h2>{{ sv.stage.name }}</h2>{% badge sv.status %}</div>
+      {% include "partials/stage_view.html" with show_games=False %}
+    </div>
+  {% empty %}
+    <div class="panel empty">Standings will appear once the format is set.</div>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}

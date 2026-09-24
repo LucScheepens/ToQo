@@ -1,0 +1,9 @@
+{% extends "manage/layout.html" %}
+{% block page_title %}{{ team.name }}{% endblock %}
+{% block content %}
+<h1>Edit team</h1>
+<form method="post" class="panel" style="max-width:32rem">{% csrf_token %}
+  {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+  <div class="btn-row"><button class="btn" type="submit">Save</button><a class="btn btn-ghost" href="{% url 'm_teams' t.slug %}?cat={{ team.category_id }}">Cancel</a></div>
+</form>
+{% endblock %}

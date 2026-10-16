@@ -97,3 +97,5 @@ Settings come from environment variables: `TOQO_SECRET_KEY`, `TOQO_DEBUG` (the i
 `TOQO_ALLOWED_HOSTS`, `TOQO_TIME_ZONE`, `TOQO_DB_PATH`, `TOQO_MEDIA_ROOT` and `TOQO_HTTPS`.
 SQLite runs in WAL mode, which comfortably handles a handful of scorekeepers entering results at once. Payments are a stub
 (`tournaments/services/publishing.py: ensure_paid`), and email uses the console backend.
+
+This site is fully made by the ToQo

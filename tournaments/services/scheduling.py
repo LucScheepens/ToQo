@@ -237,6 +237,8 @@ def start_game(game, space):
         raise ServiceError(f"{space.name} is busy.")
     if game.status != Game.Status.SCHEDULED or not game.teams_known:
         raise ServiceError("This game can't start yet.")
+    if {game.home_team_id, game.away_team_id} & _busy_teams(t):
+        raise ServiceError("One of these players is still on another court.")
     game.status = Game.Status.IN_PROGRESS
     game.space = space
     game.started_at = timezone.now()

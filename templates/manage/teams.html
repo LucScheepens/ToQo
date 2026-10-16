@@ -16,20 +16,21 @@
   <div class="split">
     <div class="panel">
       <form method="post">{% csrf_token %}<input type="hidden" name="action" value="seeds">
-      <div class="panel-head"><h2>{{ team_list|length }} team{{ team_list|length|pluralize }}</h2>{% if team_list %}<button class="btn btn-sm btn-ghost">Save seeds</button>{% endif %}</div>
+      <div class="panel-head"><h2>{{ team_list|length }} team{{ team_list|length|pluralize }}</h2>{% if team_list %}<button class="btn btn-sm btn-ghost">Save {% if show_group %}seeds &amp; poules{% else %}seeds{% endif %}</button>{% endif %}</div>
       {% if has_results %}<label class="small"><input type="checkbox" name="confirm" value="1"> I understand results will be deleted</label>{% endif %}
       <table>
-        <thead><tr><th style="width:5rem">Seed</th><th>Team</th><th>Contact</th><th></th></tr></thead>
+        <thead><tr><th style="width:5rem">Seed</th>{% if show_group %}<th style="width:9rem">Starting poule</th>{% endif %}<th>Team</th><th>Contact</th><th></th></tr></thead>
         <tbody>
         {% for team in team_list %}
           <tr>
             <td><input type="number" min="1" name="seed_{{ team.id }}" value="{{ team.seed|default_if_none:'' }}" style="width:4.5rem"></td>
+            {% if show_group %}<td><select name="group_{{ team.id }}"><option value="">—</option>{% for v, l in groups %}<option value="{{ v }}"{% if team.group == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>{% endif %}
             <td><strong>{{ team.name }}</strong>{% if team.short_name %} <span class="muted">({{ team.short_name }})</span>{% endif %}</td>
             <td class="muted small">{{ team.contact }}</td>
             <td class="nowrap"><a class="btn btn-sm btn-ghost" href="{% url 'm_team_edit' t.slug team.id %}">Edit</a>
               <button class="btn btn-sm btn-ghost btn-danger" form="del-{{ team.id }}">Remove</button></td>
           </tr>
-        {% empty %}<tr><td colspan="4" class="empty">No teams yet — add them on the right.</td></tr>{% endfor %}
+        {% empty %}<tr><td colspan="{% if show_group %}5{% else %}4{% endif %}" class="empty">No teams yet — add them on the right.</td></tr>{% endfor %}
         </tbody>
       </table>
       </form>
@@ -48,6 +49,7 @@
       <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="action" value="bulk">
         <h3>Add many</h3>
         {{ bulk.names }}
+        {% if show_group %}{% include "partials/field.html" with field=bulk.group %}{% endif %}
         {% if has_results %}<label class="small"><input type="checkbox" name="confirm" value="1"> I understand results will be deleted</label>{% endif %}
         <div class="btn-row"><button class="btn" type="submit">Add teams</button></div>
       </form>

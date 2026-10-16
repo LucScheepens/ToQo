@@ -27,11 +27,29 @@ def _after(game, was_space):
     from .scheduling import start_next
 
     t = game.stage.category.tournament
-    if t.schedule_mode == Tournament.ScheduleMode.QUEUE and was_space is not None:
+    if t.schedule_mode == Tournament.ScheduleMode.QUEUE and t.auto_queue and was_space is not None:
         start_next(t, was_space)
 
 
-def submit_result(game, home_score, away_score, winner_side=None, *, user=None, confirm=False):
+def submit_games(game, games, winner_side=None, *, user=None, confirm=False):
+    """Result from one or more game scores. One game: its points are the score. Several (best-of):
+    the score is games won and the individual game scores are kept in ``game.sets``."""
+    games = [(h, a) for h, a in games if h is not None or a is not None]
+    if not games:
+        raise ServiceError("Enter both scores (0 or more).")
+    for i, (h, a) in enumerate(games, 1):
+        if h is None or a is None or h < 0 or a < 0:
+            raise ServiceError(f"Enter both scores of game {i} (0 or more).")
+    if len(games) == 1:
+        return submit_result(game, *games[0], winner_side, user=user, confirm=confirm)
+    if any(h == a for h, a in games):
+        raise ServiceError("Each game of a best-of match needs a winner.")
+    home = sum(h > a for h, a in games)
+    return submit_result(game, home, len(games) - home, winner_side, user=user, confirm=confirm,
+                         sets=[[h, a] for h, a in games])
+
+
+def submit_result(game, home_score, away_score, winner_side=None, *, user=None, confirm=False, sets=None):
     _check_live(game)
     if home_score is None or away_score is None or home_score < 0 or away_score < 0:
         raise ServiceError("Enter both scores (0 or more).")
@@ -52,6 +70,7 @@ def submit_result(game, home_score, away_score, winner_side=None, *, user=None, 
 
     def change():
         game.home_score, game.away_score = home_score, away_score
+        game.sets = sets or []
         game.winner_side, game.forfeit_side = side, ""
         game.status = Game.Status.COMPLETED
         game.finished_at = timezone.now()
@@ -77,6 +96,7 @@ def forfeit(game, forfeiting_side, *, user=None, confirm=False):
         game.winner_side = "A" if forfeiting_side == "H" else "H"
         win, loss = t.forfeit_win_score, t.forfeit_loss_score
         game.home_score, game.away_score = (loss, win) if forfeiting_side == "H" else (win, loss)
+        game.sets = []
         game.finished_at = timezone.now()
         game.save()
 
@@ -95,6 +115,7 @@ def cancel(game, *, user=None, confirm=False):
     def change():
         game.status = Game.Status.CANCELLED
         game.home_score = game.away_score = None
+        game.sets = []
         game.winner_side = game.forfeit_side = ""
         game.save()
 
@@ -106,6 +127,7 @@ def clear_result(game, *, user=None, confirm=False):
     def change():
         game.status = Game.Status.SCHEDULED
         game.home_score = game.away_score = None
+        game.sets = []
         game.winner_side = game.forfeit_side = ""
         game.finished_at = game.started_at = None
         game.save()
@@ -131,6 +153,7 @@ def swap_home(game, *, user=None):
         flip = {"H": "A", "A": "H"}
         game.winner_side = flip.get(game.winner_side, game.winner_side)
         game.forfeit_side = flip.get(game.forfeit_side, game.forfeit_side)
+        game.sets = [[a, h] for h, a in game.sets]
         game.save()
 
     apply_change(game.stage.category, change, confirm=True, user=user, verb="swap",

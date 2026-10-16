@@ -1,0 +1,9 @@
+{% if s %}
+<div class="seed-line{% if s.tie %} tie{% endif %}">
+  <span class="seed-no">{{ s.entry.position }}</span>
+  <span class="seed-name">{{ s.team.name|default:"—" }}{% if s.entry.locked %} <span class="badge badge-warn">manual</span>{% endif %}{% if s.tie %} <span class="badge badge-warn" title="Level on every tiebreaker">tie</span>{% endif %}</span>
+  <span class="seed-src">{{ s.entry.source_label }}{% if s.row %} · {{ s.row.w }}–{{ s.row.l }}{% endif %}</span>
+</div>
+{% else %}
+<div class="seed-line bye"><span class="seed-no"></span><span class="seed-name muted">bye</span><span class="seed-src"></span></div>
+{% endif %}

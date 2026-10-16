@@ -42,9 +42,58 @@ The key rule: **results are the only source of truth.** After any change,
 and advanced slots. If that would wipe other results, the change is rolled back and the
 organizer is asked to confirm first.
 
+## Deploying with Docker
+
+The repo ships a two-container setup:
+
+| Container | What it does |
+|---|---|
+| `web` | Django under Gunicorn. Runs migrations on start. Serves CSS/JS itself (WhiteNoise). |
+| `caddy` | Public entry point on ports 80/443. Gets and renews the HTTPS certificate automatically and serves uploaded images (`/media`). |
+
+The SQLite database and uploads live in the `toqo-data` volume (`/data` in the container), so
+they survive rebuilds and updates.
+
+### First deploy
+
+You need a Linux server with Docker installed (`curl -fsSL https://get.docker.com | sh`) and a
+domain name whose DNS A record points at the server's IP. Ports 80 and 443 must be open.
+
+```sh
+git clone <your repo url> toqo && cd toqo
+cp .env.example .env
+nano .env                      # set TOQO_DOMAIN, TOQO_ALLOWED_HOSTS and TOQO_SECRET_KEY
+docker compose up -d --build
+docker compose exec web python manage.py createsuperuser   # or bring your existing database, below
+```
+
+Open `https://<your domain>`. The first request can take a few seconds while Caddy fetches the
+certificate.
+
+### Bringing your existing data
+
+Copy `db.sqlite3` (and the `media/` folder, if you uploaded banners or images) to the server, then:
+
+```sh
+docker compose stop web
+docker compose run --rm -T --entrypoint sh web -c 'cat > /data/db.sqlite3' < db.sqlite3
+tar -c media | docker compose run --rm -T --entrypoint sh web -c 'tar -x -C /data'
+docker compose start web       # migrations run automatically
+```
+
+### Everyday commands
+
+```sh
+docker compose logs -f web                  # app logs
+git pull && docker compose up -d --build    # update to a new version
+docker compose run --rm -T --entrypoint sh web -c 'cat /data/db.sqlite3' > backup-$(date +%F).sqlite3
+```
+
+Make the backup **while the site is quiet**, or stop `web` first, so the copy is consistent.
+
 ## Production notes
 
-Set `TOQO_SECRET_KEY`, `TOQO_DEBUG=0` and `TOQO_ALLOWED_HOSTS`, point `DATABASES` at
-PostgreSQL if you expect concurrent scorekeepers, run `collectstatic`, and serve media
-files (banners) from your web server. Payments are a stub
+Settings come from environment variables: `TOQO_SECRET_KEY`, `TOQO_DEBUG` (the image sets `0`),
+`TOQO_ALLOWED_HOSTS`, `TOQO_TIME_ZONE`, `TOQO_DB_PATH`, `TOQO_MEDIA_ROOT` and `TOQO_HTTPS`.
+SQLite runs in WAL mode, which comfortably handles a handful of scorekeepers entering results at once. Payments are a stub
 (`tournaments/services/publishing.py: ensure_paid`), and email uses the console backend.

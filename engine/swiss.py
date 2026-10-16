@@ -1,6 +1,7 @@
 """Swiss pairing (SPEC §7.4)."""
 from __future__ import annotations
 
+import random
 from typing import Hashable, Sequence
 
 TeamId = Hashable
@@ -12,6 +13,14 @@ def first_round(ordered: Sequence[TeamId]) -> tuple[list[tuple[TeamId, TeamId]],
     bye = teams.pop() if len(teams) % 2 else None
     half = len(teams) // 2
     return [(teams[i], teams[i + half]) for i in range(half)], bye
+
+
+def random_first_round(teams: Sequence[TeamId], seed: int) -> tuple[list[tuple[TeamId, TeamId]], TeamId | None]:
+    """Random draw that is stable for a given ``seed`` (so re-deriving never reshuffles)."""
+    order = list(teams)
+    random.Random(seed).shuffle(order)
+    bye = order.pop() if len(order) % 2 else None
+    return [(order[i], order[i + 1]) for i in range(0, len(order), 2)], bye
 
 
 def pair_round(

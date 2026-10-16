@@ -6,4 +6,5 @@
   </div>
   <div class="side {{ g|side_class:'H' }}"><span class="name {% if not g.home_team %}placeholder{% endif %}">{{ g.home_label }}</span><span class="score">{% if g.home_score is not None %}{{ g.home_score }}{% endif %}</span></div>
   <div class="side {{ g|side_class:'A' }}"><span class="name {% if not g.away_team %}placeholder{% endif %}">{{ g.away_label }}</span><span class="score">{% if g.away_score is not None %}{{ g.away_score }}{% endif %}</span></div>
+  {% if g.sets %}<div class="sets">{{ g.sets_label }}</div>{% endif %}
 </div>

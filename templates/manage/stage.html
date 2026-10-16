@@ -69,6 +69,32 @@
 </div>
 
 <div>
+  {% if stage.kind == 'swiss' %}
+  <div class="panel">
+    <div class="panel-head"><h2>Rounds</h2><span class="muted small">{{ rounds|length }} round{{ rounds|length|pluralize }}</span></div>
+    <ul class="round-list">
+      {% for r in rounds %}
+        <li><span>Round {{ r.round }}</span>
+          {% if r.done and r.paired %}<span class="badge badge-ok">Played</span>
+          {% elif r.started or r.live %}<span class="badge badge-live">In progress</span>
+          {% elif r.paired %}<span class="badge badge-info">Paired</span>
+          {% else %}<span class="badge badge-muted">Not paired yet</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    {% if stage.advanced_at %}
+      <p class="muted small">Players have advanced from this stage. Undo the advancement on the Standings page to change the rounds.</p>
+    {% else %}
+      <div class="btn-row">
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_round"><button class="btn btn-sm">+ Add round</button></form>
+        {% with last=rounds|last %}{% if rounds|length >= removable_from and rounds|length > 1 %}
+          <form method="post" data-confirm="Remove round {{ rounds|length }}?{% if last.paired %} Its pairings will be deleted.{% endif %}">{% csrf_token %}<input type="hidden" name="action" value="remove_round"><button class="btn btn-sm btn-ghost btn-danger">Remove round {{ rounds|length }}</button></form>
+        {% endif %}{% endwith %}
+      </div>
+      <p class="muted small">A round can be removed until one of its games has a result or is being played. Adding or removing a round never changes earlier pairings or results.</p>
+    {% endif %}
+  </div>
+  {% endif %}
   <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="action" value="settings">
     <h2>Stage settings</h2>
     {% include "partials/field.html" with field=form.name %}
@@ -76,7 +102,7 @@
     {% if stage.kind == 'rr' %}{% include "partials/field.html" with field=form.cycles %}{% include "partials/field.html" with field=form.games_per_team %}{% endif %}
     {% if stage.kind == 'se' %}{% include "partials/field.html" with field=form.placement %}{% endif %}
     {% if stage.kind == 'de' %}{% include "partials/field.html" with field=form.grand_final_reset %}{% endif %}
-    {% if stage.kind == 'swiss' %}{% include "partials/field.html" with field=form.rounds %}{% endif %}
+    {% if stage.kind == 'swiss' %}{% include "partials/field.html" with field=form.rounds %}{% include "partials/field.html" with field=form.first_round %}{% endif %}
     {% if not stage.is_bracket %}
       <h3>Tiebreakers</h3>
       <p class="muted small">Applied in order. Remaining ties fall back to seed.</p>

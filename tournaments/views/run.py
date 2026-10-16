@@ -1,4 +1,5 @@
 """Running the event (SPEC §10, §11, §9): schedule, games, standings, queue board."""
+import re
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
 
@@ -7,12 +8,15 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils.http import urlencode
 
-from ..forms import ResultForm, ScheduleSettingsForm, TimeWindowForm
+from ..forms import ScheduleSettingsForm, TimeWindowForm
 from ..models import Game, Membership, Space, Stage, Team, TimeWindow, Tournament
 from ..presenters import category_view, games_by_day
-from ..services import results, scheduling, transitions
+from ..services import results, scheduling, structure, transitions
 from ..services.access import manage
 from ..services.common import ServiceError, touch
+from ..services.resolution import stage_status
+from ..services.standings import pool_standings, stage_games
+from ..templatetags.toqo import round_label
 from .base import error, page, safe_next
 
 SCOREKEEPER = Membership.Role.SCOREKEEPER
@@ -53,6 +57,8 @@ def schedule(request, t):
                 settings_form = ScheduleSettingsForm(request.POST, instance=t)
                 if settings_form.is_valid():
                     settings_form.save()
+                    if "schedule_mode" in settings_form.changed_data:
+                        structure.renumber(t)
                     Game.objects.filter(stage__category__tournament=t, stage__game_minutes__isnull=True).update(
                         duration=t.default_game_minutes)
                     touch(t)
@@ -124,6 +130,17 @@ def schedule(request, t):
                 total=len(shown), scheduled=sum(1 for g in shown if g.start_at))
 
 
+def _scores(values):
+    """Score inputs → ints (None when empty)."""
+    out = []
+    for v in values:
+        v = (v or "").strip()
+        if v and not v.isdigit():
+            raise ServiceError("Scores must be whole numbers.")
+        out.append(int(v) if v else None)
+    return out
+
+
 @manage(SCOREKEEPER)
 def game_detail(request, t, game_id):
     game = get_object_or_404(Game.objects.select_related("stage", "stage__category", "pool", "space",
@@ -131,9 +148,10 @@ def game_detail(request, t, game_id):
                              pk=game_id, stage__category__tournament=t)
     is_admin = request.role in ADMIN_ROLES
     nxt = safe_next(request, reverse("m_schedule", args=[t.slug]) + "?view=list")
-    initial = {"home_score": game.home_score, "away_score": game.away_score,
-               "winner_side": game.winner_side if game.home_score == game.away_score else ""}
-    form = ResultForm(request.POST or None, initial=initial)
+    score_rows = game.sets or [[game.home_score, game.away_score]]
+    if request.method == "POST" and request.POST.get("action") == "result":
+        score_rows = list(zip(request.POST.getlist("home_score"), request.POST.getlist("away_score"))) or score_rows
+    tied_winner = game.winner_side if game.home_score is not None and game.home_score == game.away_score else ""
     affected, pending_action = None, None
     if request.method == "POST":
         action = request.POST.get("action")
@@ -143,10 +161,10 @@ def game_detail(request, t, game_id):
             if action in admin_only and not is_admin:
                 raise ServiceError("Only admins can do that.")
             if action == "result":
-                if form.is_valid():
-                    d = form.cleaned_data
-                    affected = results.submit_result(game, d["home_score"], d["away_score"], d["winner_side"] or None,
-                                                     user=request.user, confirm=confirm)
+                games = list(zip(_scores(request.POST.getlist("home_score")),
+                                 _scores(request.POST.getlist("away_score"))))
+                affected = results.submit_games(game, games, request.POST.get("winner_side") or None,
+                                                user=request.user, confirm=confirm)
             elif action == "forfeit":
                 affected = results.forfeit(game, request.POST.get("side"), user=request.user, confirm=confirm)
             elif action == "cancel":
@@ -192,12 +210,14 @@ def game_detail(request, t, game_id):
         if affected:
             pending_action = request.POST
             game.refresh_from_db()
-    return page(request, t, "manage/game.html", "schedule", game=game, form=form, is_admin=is_admin,
+    return page(request, t, "manage/game.html", "schedule", game=game, score_rows=score_rows,
+                tied_winner=request.POST.get("winner_side", tied_winner), is_admin=is_admin,
                 affected=affected, pending=pending_action, next=nxt,
                 spaces=Space.objects.filter(venue__tournament=t).select_related("venue"),
                 cat_teams=game.stage.category.teams.all(),
                 is_elim=game.stage.kind in (Stage.Kind.SE, Stage.Kind.DE),
-                conflicts=scheduling.find_conflicts(t).get(game.id, []))
+                conflicts=scheduling.find_conflicts(t).get(game.id, [])
+                if t.schedule_mode == Tournament.ScheduleMode.TIMED else [])
 
 
 @manage(SCOREKEEPER)
@@ -229,11 +249,56 @@ def standings(request, t):
         cv = category_view(c)
         for sv in cv["stages"]:
             sv["can_advance"] = transitions.can_advance(sv["stage"])
-            if sv["can_advance"] or sv["status"] == "transitioned":
-                sv["preview"] = transitions.preview(sv["stage"])
         cats.append(cv)
     return page(request, t, "manage/standings.html", "standings", cats=cats, is_admin=is_admin,
                 can_finish=t.status == Tournament.Status.IN_PROGRESS and transitions.all_complete(t))
+
+
+@manage()
+def advance_review(request, t, stage_id):
+    """Final check before filling the next stage from this stage's standings (SPEC §9)."""
+    stage = get_object_or_404(Stage, pk=stage_id, category__tournament=t)
+    if request.method == "POST":
+        try:
+            if not request.POST.get("checked"):
+                raise ServiceError("Tick the box to confirm you've checked the seeding.")
+            transitions.advance(stage, request.user)
+            nxt = stage.category.stages.filter(order__gt=stage.order).first()
+            messages.success(request, f"{nxt.name if nxt else 'Next stage'} filled from {stage.name}. "
+                                      "The first-round games are ready to play.")
+            if t.schedule_mode == Tournament.ScheduleMode.QUEUE:
+                return redirect("m_queue", t.slug)
+            return redirect(reverse("m_standings", args=[t.slug]) + (f"#stage-{nxt.id}" if nxt else ""))
+        except ServiceError as exc:
+            error(request, exc)
+            return redirect("m_advance", t.slug, stage.id)
+    if stage.advanced_at:
+        messages.info(request, f"Players have already advanced from {stage.name}.")
+        return redirect("m_standings", t.slug)
+
+    games = stage_games(stage)
+    records = {}
+    for pool in stage.pools.all():
+        for row in pool_standings(pool, [g for g in games if g.pool_id == pool.id]):
+            records[row.team.id] = row
+    flights, by_entry, ties, manual = OrderedDict(), {}, [], []
+    for e, team, tie in transitions.preview(stage):
+        if e.locked:
+            manual.append(e)
+        who = e.team if e.locked else team
+        seed = {"entry": e, "team": who, "tie": tie, "row": records.get(who.id) if who else None}
+        by_entry[e.id] = seed
+        flights.setdefault(e.pool_id, {"pool": e.pool, "seeds": [], "matches": []})["seeds"].append(seed)
+        if tie and who:
+            ties.append(seed)
+    first_round = Game.objects.filter(pool_id__in=list(flights), round=1).exclude(bracket__in=["L", "F", "P"])
+    for g in first_round.order_by("pool__order", "index"):
+        if g.home_entry_id or g.away_entry_id:
+            flights[g.pool_id]["matches"].append((by_entry.get(g.home_entry_id), by_entry.get(g.away_entry_id)))
+    can = transitions.can_advance(stage)
+    return page(request, t, "manage/advance.html", "standings", stage=stage, flights=list(flights.values()),
+                ties=ties, manual=manual, can=can, status=stage_status(stage, games),
+                next_stage=stage.category.stages.filter(order__gt=stage.order).first())
 
 
 @manage(SCOREKEEPER)
@@ -252,6 +317,14 @@ def queue(request, t):
                 game = get_object_or_404(Game, pk=request.POST.get("game"), stage__category__tournament=t)
                 space = get_object_or_404(Space, pk=request.POST.get("space"), venue__tournament=t)
                 scheduling.start_game(game, space)
+            elif action == "stop":
+                game = get_object_or_404(Game, pk=request.POST.get("game"), stage__category__tournament=t)
+                scheduling.stop_game(game)
+            elif action == "auto_queue":
+                t.auto_queue = request.POST.get("on") == "1"
+                t.save(update_fields=["auto_queue"])
+                touch(t)
+                messages.success(request, "Automatic queueing is " + ("on." if t.auto_queue else "off."))
         except ServiceError as exc:
             error(request, exc)
         return redirect("m_queue", t.slug)
@@ -266,5 +339,20 @@ def queue(request, t):
                and not (g.if_necessary and g.status == Game.Status.CANCELLED)]
     recent = sorted([g for g in games if g.has_result], key=lambda g: g.finished_at or datetime.min,
                     reverse=True)[:8]
+    waiting_groups = OrderedDict()
+    for g in waiting:
+        name = re.sub(r"\s+#?\d+$", "", round_label(g)) if g.bracket else round_label(g)
+        group = waiting_groups.setdefault((g.pool_id, g.bracket, g.round),
+                                          {"pool": g.pool, "name": name, "games": []})
+        group["games"].append(g)
+    legend = OrderedDict()
+    for g in ready + waiting:
+        entry = legend.setdefault(g.pool_id, {"pool": g.pool, "ready": 0})
+        entry["ready"] += g in ready
+    free = sum(1 for g in spaces.values() if g is None)
+    advanceable = [s for s in Stage.objects.filter(category__tournament=t, advanced_at__isnull=True)
+                   if transitions.can_advance(s)]
     return page(request, t, "manage/queue.html", "queue", spaces=list(spaces.items()), ready=ready,
-                waiting=waiting[:30], recent=recent, live=t.is_live)
+                waiting_groups=list(waiting_groups.values()), recent=recent[:6], live=t.is_live,
+                legend=list(legend.values()), free=free, advanceable=advanceable,
+                is_admin=request.role in ADMIN_ROLES)

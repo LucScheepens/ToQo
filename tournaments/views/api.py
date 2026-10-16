@@ -24,7 +24,7 @@ def _game(g):
         "home": _team(g.home_team), "away": _team(g.away_team),
         "home_label": g.home_label, "away_label": g.away_label,
         "status": g.status, "home_score": g.home_score, "away_score": g.away_score,
-        "winner_side": g.winner_side or None, "note": g.note,
+        "winner_side": g.winner_side or None, "sets": g.sets, "note": g.note,
         "space": g.space.full_name if g.space else None,
         "start": g.start_at.isoformat() if g.start_at else None, "duration": g.duration,
     }

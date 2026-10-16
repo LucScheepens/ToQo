@@ -79,11 +79,13 @@ class CategoryForm(forms.ModelForm):
 class TeamForm(forms.ModelForm):
     class Meta:
         model = Team
-        fields = ["name", "short_name", "seed", "contact"]
+        fields = ["name", "short_name", "seed", "group", "contact"]
 
 
 class BulkTeamsForm(forms.Form):
     names = forms.CharField(widget=forms.Textarea(attrs={"rows": 6, "placeholder": "One team per line"}))
+    group = forms.TypedChoiceField(choices=[("", "—")] + Team.GROUPS, coerce=int, empty_value=None, required=False,
+                                   label="Starting poule")
 
 
 class FormatForm(forms.Form):
@@ -114,6 +116,8 @@ class StageForm(forms.Form):
     placement = forms.ChoiceField(choices=FormatForm.base_fields["placement"].choices, required=False)
     grand_final_reset = forms.BooleanField(required=False)
     rounds = forms.IntegerField(min_value=1, required=False, label="Swiss rounds")
+    first_round = forms.ChoiceField(choices=[("seeded", "Top half vs bottom half by seed"), ("random", "Random draw")],
+                                    required=False, label="Swiss round 1")
 
 
 class AddStageForm(forms.Form):
@@ -185,9 +189,3 @@ class InviteForm(forms.Form):
     email = forms.EmailField()
     role = forms.ChoiceField(choices=[(Membership.Role.ADMIN, "Admin"), (Membership.Role.SCOREKEEPER, "Scorekeeper")])
 
-
-class ResultForm(forms.Form):
-    home_score = forms.IntegerField(min_value=0)
-    away_score = forms.IntegerField(min_value=0)
-    winner_side = forms.ChoiceField(choices=[("", "—"), ("H", "Home"), ("A", "Away")], required=False)
-    confirm = forms.BooleanField(required=False)

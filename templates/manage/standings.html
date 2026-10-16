@@ -27,17 +27,9 @@
         <span class="muted small">{{ sv.done }}/{{ sv.total }} games · <a href="{% url 'm_stage' t.slug sv.stage.id %}">configure</a></span>
       </div>
       {% if sv.can_advance and is_admin %}
-        <div class="callout info">
-          <strong>{{ sv.stage.name }} is complete.</strong> These teams qualify:
-          <table style="margin:.5rem 0;background:transparent">
-            <thead><tr><th>Next stage slot</th><th>Source</th><th>Team</th></tr></thead>
-            {% for e, team, tie in sv.preview %}
-              <tr class="{% if tie %}flag{% endif %}"><td>{{ e.pool.stage.name }} · {{ e.pool.name }} seed {{ e.position }}</td><td>{{ e.source_label }}</td>
-                <td><strong>{{ team.name|default:"—" }}</strong>{% if e.locked %} <span class="badge badge-warn">manual: {{ e.team.name }}</span>{% endif %}{% if tie %} <span class="badge badge-warn" title="Decided by seed after all tiebreakers">tie</span>{% endif %}</td></tr>
-            {% endfor %}
-          </table>
-          <form method="post">{% csrf_token %}<input type="hidden" name="action" value="advance"><input type="hidden" name="stage" value="{{ sv.stage.id }}"><button class="btn">Confirm and advance teams</button></form>
-          <p class="small muted">To override a qualifier (e.g. after a coin toss), set the team manually on the <a href="{% url 'm_stage' t.slug sv.preview.0.0.pool.stage_id %}">next stage</a>.</p>
+        <div class="advance-banner">
+          <div><strong>{{ sv.stage.name }} is complete.</strong> <span class="muted">Review who goes where, then fill the next stage.</span></div>
+          <a class="btn" href="{% url 'm_advance' t.slug sv.stage.id %}">Review &amp; fill the brackets →</a>
         </div>
       {% elif sv.status == 'transitioned' and is_admin %}
         <form method="post" class="btn-row" data-confirm="Empty the next stage's slots again?">{% csrf_token %}<input type="hidden" name="action" value="undo_advance"><input type="hidden" name="stage" value="{{ sv.stage.id }}">

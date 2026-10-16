@@ -1,0 +1,61 @@
+{% extends "manage/layout.html" %}
+{% load toqo %}
+{% block page_title %}Fill {{ next_stage.name|default:"next stage" }}{% endblock %}
+{% block content %}
+<div class="muted small"><a href="{% url 'm_standings' t.slug %}">Standings &amp; brackets</a> › {{ stage.name }}</div>
+<div class="page-head">
+  <div>
+    <h1>Final check: {{ stage.name }} → {{ next_stage.name|default:"next stage" }}</h1>
+    <p class="muted">These brackets are filled from the final {{ stage.name|lower }} standings. Check them, then confirm.</p>
+  </div>
+</div>
+
+{% if not can %}
+  <div class="callout err"><strong>{{ stage.name }} isn't finished yet.</strong> Every game must have a result, forfeit or cancellation before the brackets can be filled. <a href="{% url 'm_standings' t.slug %}#stage-{{ stage.id }}">See the standings</a></div>
+{% endif %}
+
+{% if ties or manual %}
+<div class="callout">
+  {% if ties %}
+    <strong>Check {{ ties|length }} tie{{ ties|length|pluralize }}:</strong> these players are level with someone on every tiebreaker, so their order was decided by seed position. If that crosses a bracket line, settle it (e.g. a playoff game or coin toss) and set the player manually on the <a href="{% url 'm_stage' t.slug next_stage.id %}">{{ next_stage.name }} stage</a>.
+    <div class="tie-list">{% for s in ties %}<span class="chip {{ s.entry.pool|pool_tone }}">{{ s.team.name }} · {{ s.entry.source_label }}</span>{% endfor %}</div>
+  {% endif %}
+  {% if manual %}<p style="margin-bottom:0"><strong>Manually set:</strong> {% for e in manual %}{{ e.pool.name }} seed {{ e.position }} = {{ e.team.name }}{% if not forloop.last %}, {% endif %}{% endfor %}. These slots keep their manual player.</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="flights">
+  {% for f in flights %}
+    <section class="panel flight {{ f.pool|pool_tone }}">
+      <div class="flight-head">
+        <h2>{{ f.pool.name }}</h2>
+        <span class="muted small">{{ f.seeds|length }} players</span>
+      </div>
+      {% if f.matches %}
+        <h3 class="muted small upper">First round</h3>
+        <ol class="matchups">
+          {% for home, away in f.matches %}
+            <li>
+              {% include "partials/seed_line.html" with s=home %}
+              {% include "partials/seed_line.html" with s=away %}
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <ol class="matchups"><li>{% for s in f.seeds %}{% include "partials/seed_line.html" %}{% endfor %}</li></ol>
+      {% endif %}
+    </section>
+  {% endfor %}
+</div>
+
+{% if can %}
+<form method="post" class="panel confirm-bar" data-confirm="Fill the {{ next_stage.name|default:'next stage'|lower }} brackets now?">{% csrf_token %}
+  <label class="check-line"><input type="checkbox" name="checked" value="1" required> I've checked the seeding and the first-round matchups</label>
+  <div class="btn-row">
+    <button class="btn" type="submit">Fill the brackets</button>
+    <a class="btn btn-ghost" href="{% url 'm_standings' t.slug %}#stage-{{ stage.id }}">Not yet</a>
+  </div>
+  <p class="muted small" style="margin:0">You can undo this from the Standings page as long as no knockout game has a result. Correcting a seeding result later updates the brackets automatically.</p>
+</form>
+{% endif %}
+{% endblock %}

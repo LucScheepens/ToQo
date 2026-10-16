@@ -7,7 +7,7 @@ that had to be cleared because their teams changed.
 """
 from django.db.models import Q
 
-from engine.swiss import first_round, pair_round
+from engine.swiss import first_round, pair_round, random_first_round
 
 from ..models import Entry, Game, Stage
 from .standings import pool_ranking, pool_table, stage_games, stage_overall_ranking
@@ -24,6 +24,7 @@ def _describe(g):
 def _clear_result(g):
     g.status = Game.Status.SCHEDULED
     g.home_score = g.away_score = None
+    g.sets = []
     g.winner_side = g.forfeit_side = ""
     g.started_at = g.finished_at = None
 
@@ -103,9 +104,12 @@ def resolve_stage(stage):
 
 def resolve_swiss(stage):
     games = stage_games(stage)
-    pool = stage.pools.first()
-    if pool is None:
-        return
+    for pool in stage.pools.all():
+        _resolve_swiss_pool(stage, pool, [g for g in games if g.pool_id == pool.id])
+
+
+def _resolve_swiss_pool(stage, pool, games):
+    cfg = stage.config or {}
     entries = list(pool.entries.select_related("team").order_by("position"))
     filled = entries and all(e.team_id for e in entries)
     rounds = {}
@@ -119,7 +123,10 @@ def resolve_swiss(stage):
         ready = filled and all(game_done(g) for g in prev)
         assignments = []
         if ready:
-            if r == 1:
+            if r == 1 and cfg.get("first_round") == "random":
+                seed = (cfg.get("shuffle_seed") or stage.id) + pool.id
+                pairs, bye = random_first_round(sorted((e.team for e in entries), key=lambda t: t.id), seed)
+            elif r == 1:
                 pairs, bye = first_round([e.team for e in entries])
             else:
                 table = pool_table(pool, prev, entries)

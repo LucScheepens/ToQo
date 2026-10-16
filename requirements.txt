@@ -1,2 +1,4 @@
-Django>=5.0,<6
+Django>=5.2,<6
 segno>=1.6
+whitenoise>=6.7
+gunicorn>=23.0

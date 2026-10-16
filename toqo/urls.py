@@ -31,6 +31,7 @@ urlpatterns = [
     path(m + "schedule/", run.schedule, name="m_schedule"),
     path(m + "games/<int:game_id>/", run.game_detail, name="m_game"),
     path(m + "standings/", run.standings, name="m_standings"),
+    path(m + "stages/<int:stage_id>/advance/", run.advance_review, name="m_advance"),
     path(m + "queue/", run.queue, name="m_queue"),
     path(m + "home/", setup.home_blocks, name="m_home"),
     path(m + "admins/", setup.admins, name="m_admins"),

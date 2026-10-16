@@ -54,6 +54,8 @@ class Tournament(models.Model):
     visibility = models.CharField(max_length=10, choices=Visibility.choices, default=Visibility.PUBLIC)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT)
     schedule_mode = models.CharField(max_length=10, choices=ScheduleMode.choices, default=ScheduleMode.TIMED)
+    auto_queue = models.BooleanField(default=True, help_text="Queue mode: a court takes the next ready game "
+                                                             "as soon as a result is entered.")
 
     points_win = models.IntegerField(default=3)
     points_draw = models.IntegerField(default=1)
@@ -135,6 +137,7 @@ class Category(models.Model):
         ("de", "Double elimination"),
         ("swiss", "Swiss ladder"),
         ("rr_playoff", "Round robin → playoffs"),
+        ("swiss_tiers", "Swiss seeding → tiered knockouts"),
         ("custom", "Custom"),
     ]
     tournament = models.ForeignKey(Tournament, on_delete=models.CASCADE, related_name="categories")
@@ -152,10 +155,14 @@ class Category(models.Model):
 
 
 class Team(models.Model):
+    GROUPS = [(1, "Upper poule"), (2, "Lower poule")]
+
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="teams")
     name = models.CharField(max_length=80)
     short_name = models.CharField(max_length=12, blank=True)
     seed = models.PositiveIntegerField(null=True, blank=True)
+    group = models.PositiveSmallIntegerField(choices=GROUPS, null=True, blank=True, verbose_name="Starting poule",
+                                             help_text="Used by the Swiss seeding → tiered knockouts format.")
     contact = models.CharField(max_length=200, blank=True)
     order = models.PositiveIntegerField(default=0)
 
@@ -326,6 +333,7 @@ class Game(models.Model):
     home_score = models.IntegerField(null=True, blank=True)
     away_score = models.IntegerField(null=True, blank=True)
     winner_side = models.CharField(max_length=1, blank=True)  # H, A, D
+    sets = models.JSONField(default=list, blank=True)  # per-game scores of a best-of match: [[h, a], ...]
     forfeit_side = models.CharField(max_length=1, blank=True)  # side that forfeited
     note = models.CharField(max_length=300, blank=True)
 
@@ -385,6 +393,10 @@ class Game(models.Model):
     @property
     def end_at(self):
         return self.start_at + timedelta(minutes=self.duration) if self.start_at else None
+
+    @property
+    def sets_label(self):
+        return ", ".join(f"{h}–{a}" for h, a in self.sets) if self.sets else ""
 
     @property
     def winner(self):

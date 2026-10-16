@@ -1,0 +1,13 @@
+# TOQO_DOMAIN comes from .env, e.g. toqo.example.com. Caddy fetches and renews the HTTPS certificate.
+{$TOQO_DOMAIN} {
+	encode gzip zstd
+
+	handle_path /media/* {
+		root * /data/toqo/media
+		file_server
+	}
+
+	handle {
+		reverse_proxy web:8000
+	}
+}

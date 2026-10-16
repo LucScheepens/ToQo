@@ -6,7 +6,7 @@ from engine.bracket import double_elimination, seed_order, single_elimination
 from engine.roundrobin import round_robin_rounds
 from engine.scheduler import SGame, Window, schedule
 from engine.standings import PointsConfig, Result, compute_table
-from engine.swiss import first_round, pair_round
+from engine.swiss import first_round, pair_round, random_first_round
 
 
 class RoundRobinTests(unittest.TestCase):
@@ -128,6 +128,14 @@ class SwissTests(unittest.TestCase):
         pairs, bye = first_round([1, 2, 3, 4, 5])
         self.assertEqual(pairs, [(1, 3), (2, 4)])
         self.assertEqual(bye, 5)
+
+    def test_random_first_round_is_stable(self):
+        a = random_first_round(range(10), seed=7)
+        self.assertEqual(a, random_first_round(range(10), seed=7))
+        self.assertEqual(sorted(t for p in a[0] for t in p), list(range(10)))
+        self.assertIsNone(a[1])
+        _, bye = random_first_round(range(5), seed=1)
+        self.assertIsNotNone(bye)
 
     def test_avoids_rematch(self):
         pairs, _ = pair_round([1, 2, 3, 4], {frozenset((1, 2))})

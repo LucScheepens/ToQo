@@ -1,0 +1,33 @@
+# Usage: copy .env.example to .env, fill it in, then `docker compose up -d --build`.
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TOQO_HTTPS: "1"
+    volumes:
+      - toqo-data:/data          # SQLite database + uploaded banners/images
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    depends_on:
+      - web
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - toqo-data:/data/toqo:ro  # serve /media straight from the shared volume
+      - caddy-data:/data         # HTTPS certificates
+      - caddy-config:/config
+
+volumes:
+  toqo-data:
+  caddy-data:
+  caddy-config:

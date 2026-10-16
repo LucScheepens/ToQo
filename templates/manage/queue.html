@@ -1,39 +1,107 @@
 {% extends "manage/layout.html" %}
+{% load toqo %}
 {% block page_title %}Queue board{% endblock %}
 {% block main_attrs %}data-live-version="{{ t.version }}" data-live-url="{% url 'api_version' t.slug %}"{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Queue board</h1><p class="muted">When a game finishes, enter the result — the {{ t.space_noun|lower }} automatically takes the next ready game (both teams known and not playing elsewhere).</p></div>
-  {% if live %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="fill_all"><button class="btn">Fill all free {{ t.space_noun|lower }}s</button></form>{% endif %}
+  <div>
+    <h1>Queue board</h1>
+    <p class="muted">Drag a pending game onto a free {{ t.space_noun|lower }}, or tap the game and then the {{ t.space_noun|lower }}.</p>
+  </div>
+  <div class="head-actions">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="auto_queue"><input type="hidden" name="on" value="{% if t.auto_queue %}0{% else %}1{% endif %}">
+      <button class="switch {% if t.auto_queue %}on{% endif %}" role="switch" aria-checked="{{ t.auto_queue|yesno:'true,false' }}"
+              title="{% if t.auto_queue %}A {{ t.space_noun|lower }} takes the next ready game as soon as a result is entered. Click to turn off.{% else %}{{ t.space_noun }}s stay free after a result until you drop a game on them. Click to turn on.{% endif %}">
+        <span class="track"><span class="knob"></span></span>Auto-queue <strong>{{ t.auto_queue|yesno:"on,off" }}</strong>
+      </button>
+    </form>
+    {% if live and free and ready %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="fill_all"><button class="btn btn-ghost">Fill all free {{ t.space_noun|lower }}s</button></form>{% endif %}
+  </div>
 </div>
 {% if not live %}<div class="callout info">Publish the tournament to start games.</div>{% endif %}
-<div class="cards">
+{% for s in advanceable %}
+  <div class="advance-banner">
+    <div><strong>{{ s.name }} is complete.</strong> <span class="muted">Every game has a result{% if s.category.stages.count > 1 %}; the next stage can now be filled from the standings{% endif %}.</span></div>
+    {% if is_admin %}<a class="btn" href="{% url 'm_advance' t.slug s.id %}">Review &amp; fill the brackets →</a>{% endif %}
+  </div>
+{% endfor %}
+
+<form method="post" id="queue-move" hidden>{% csrf_token %}<input name="action"><input name="game"><input name="space"></form>
+
+<section class="courts">
   {% for space, g in spaces %}
-    <div class="panel">
-      <div class="panel-head"><h3>{{ space.name }}</h3><span class="muted small">{{ space.venue.name }}</span></div>
-      {% if g %}
-        <div class="small muted">#{{ g.number }} · {{ g.stage.category.name }} · {{ g.title }} · since {{ g.started_at|time:"H:i" }}</div>
-        <div style="font-size:1.1rem;margin:.4rem 0"><strong>{{ g.home_team.name }}</strong> vs <strong>{{ g.away_team.name }}</strong></div>
-        <a class="btn btn-sm" href="{% url 'm_game' t.slug g.id %}?next={{ request.path|urlencode }}">Enter result</a>
-      {% else %}
-        <p class="muted">Free</p>
-        {% if live %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="start_next"><input type="hidden" name="space" value="{{ space.id }}"><button class="btn btn-sm btn-ghost">Start next game</button></form>{% endif %}
-      {% endif %}
-    </div>
+    {% if g %}
+      <div class="court busy {{ g.pool|pool_tone }}" data-busy>
+        <div class="court-head"><span class="court-name">{{ space.name }}</span><span class="badge badge-live dot-live">Live</span></div>
+        <div class="qcard on-court" draggable="true" data-game="{{ g.id }}" data-live="1" title="Drag back to the list to take this game off the {{ t.space_noun|lower }}">
+          <div class="q-top"><span class="chip">{{ g.pool.name }}</span><span class="q-round">{{ g|round_label }}</span></div>
+          <div class="q-player">{{ g.home_team.name }}</div>
+          <div class="q-player">{{ g.away_team.name }}</div>
+        </div>
+        <div class="court-foot">
+          <span class="muted small">{{ g.started_at|minutes_since }}</span>
+          <span class="nowrap">
+            <form method="post" class="inline" data-confirm="Take this game off {{ space.name }}?">{% csrf_token %}<input type="hidden" name="action" value="stop"><input type="hidden" name="game" value="{{ g.id }}"><button class="btn btn-sm btn-ghost" title="Back to the queue">↩</button></form>
+            <a class="btn btn-sm" href="{% url 'm_game' t.slug g.id %}?next={{ request.path|urlencode }}">Result</a>
+          </span>
+        </div>
+      </div>
+    {% else %}
+      <div class="court free" {% if live %}data-court="{{ space.id }}"{% endif %}>
+        <div class="court-head"><span class="court-name">{{ space.name }}</span><span class="badge badge-ok">Free</span></div>
+        <div class="court-empty">{% if live %}<span class="plus">+</span>Drop a game here{% else %}Free{% endif %}</div>
+      </div>
+    {% endif %}
   {% empty %}
     <div class="panel empty">Add <a href="{% url 'm_venues' t.slug %}">{{ t.space_noun|lower }}s</a> first.</div>
   {% endfor %}
-</div>
+</section>
+{% if spaces %}
+<p class="board-status muted small">
+  {% if free %}{{ free }} of {{ spaces|length }} {{ t.space_noun|lower }}{{ spaces|length|pluralize }} free{% else %}All {{ t.space_noun|lower }}s are busy. Enter a result to free one up{% endif %}
+  · {{ ready|length }} game{{ ready|length|pluralize }} ready
+</p>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Pending <span class="muted">({{ ready|length }})</span></h2>
+    {% if legend %}
+    <div class="filters" role="group" aria-label="Filter by poule or bracket">
+      <button type="button" class="chip filter on" data-filter="">All</button>
+      {% for l in legend %}<button type="button" class="chip filter {{ l.pool|pool_tone }}" data-filter="{{ l.pool.id }}"><span class="swatch"></span>{{ l.pool.name }} <span class="count">{{ l.ready }}</span></button>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="qlist" data-pending>
+    {% for g in ready %}
+      <div class="qcard {{ g.pool|pool_tone }}" {% if live %}draggable="true" tabindex="0" role="button"{% endif %} data-game="{{ g.id }}" data-pool="{{ g.pool_id }}">
+        <div class="q-top"><span class="chip">{{ g.pool.name }}</span><span class="q-round">{{ g|round_label }} · #{{ g.number }}</span></div>
+        <div class="q-player">{{ g.home_team.name }}</div>
+        <div class="q-player">{{ g.away_team.name }}</div>
+      </div>
+    {% empty %}<p class="muted empty-note">No game is ready right now{% if waiting_groups %}. The next games are waiting for results{% endif %}.</p>{% endfor %}
+  </div>
+</section>
+
 <div class="split">
-  <div class="panel">
-    <h2>Ready to play ({{ ready|length }})</h2>
-    <div class="game-list">{% for g in ready %}{% include "partials/game_row.html" with manage=True %}{% empty %}<p class="muted">No game is ready.</p>{% endfor %}</div>
-    {% if waiting %}<h3>Waiting for teams or rest</h3>
-    <div class="game-list">{% for g in waiting %}{% include "partials/game_row.html" with manage=True %}{% endfor %}</div>{% endif %}
-  </div>
-  <div class="panel">
+  <section class="panel">
+    <h2>Coming up</h2>
+    {% for w in waiting_groups %}
+      <div class="wait-row {{ w.pool|pool_tone }}" data-pool="{{ w.pool.id }}">
+        <span class="chip">{{ w.pool.name }}</span><span>{{ w.name }}</span>
+        <span class="muted small">{{ w.games|length }} game{{ w.games|length|pluralize }}</span>
+      </div>
+    {% empty %}<p class="muted">Nothing else to play.</p>{% endfor %}
+  </section>
+  <section class="panel">
     <h2>Recently finished</h2>
-    <div class="game-list">{% for g in recent %}{% include "partials/game_row.html" with manage=True %}{% empty %}<p class="muted">Nothing yet.</p>{% endfor %}</div>
-  </div>
+    {% for g in recent %}
+      <a class="done-row {{ g.pool|pool_tone }}" href="{% url 'm_game' t.slug g.id %}?next={{ request.path|urlencode }}">
+        <span class="chip">{{ g.pool.name }}</span>
+        <span class="done-teams"><span class="{{ g|side_class:'H' }}">{{ g.home_label }}</span> <strong class="mono">{{ g.home_score }}–{{ g.away_score }}</strong>{% if g.sets %} <span class="sets">({{ g.sets_label }})</span>{% endif %} <span class="{{ g|side_class:'A' }}">{{ g.away_label }}</span></span>
+      </a>
+    {% empty %}<p class="muted">Nothing yet.</p>{% endfor %}
+  </section>
 </div>
 {% endblock %}

@@ -7,7 +7,7 @@
   <div>
     <h1>Game #{{ game.number }} <span class="muted" style="font-weight:400">{{ game.code }}</span> {% badge game.status %}</h1>
     <div class="muted">{{ game.stage.category.name }} · {{ game.stage.name }} · {{ game.title }}</div>
-    <div class="muted">{% if game.start_at %}{{ game.start_at|date:"D M j, H:i" }}{% else %}No time set{% endif %}{% if game.space %} · {{ game.space.full_name }}{% endif %} · {{ game.duration }} min</div>
+    <div class="muted">{% if t.schedule_mode == 'timed' %}{% if game.start_at %}{{ game.start_at|date:"D M j, H:i" }}{% else %}No time set{% endif %}{% if game.space %} · {{ game.space.full_name }}{% endif %} · {{ game.duration }} min{% elif game.status == 'in_progress' %}On {{ game.space.full_name }} since {{ game.started_at|time:"H:i" }}{% else %}In the queue{% endif %}</div>
   </div>
 </div>
 {% for c in conflicts %}<div class="callout">⚠ {{ c }}</div>{% endfor %}
@@ -39,14 +39,20 @@
     {% elif t.status == 'draft' %}
       <p class="callout info">Publish the tournament to start entering results. <a href="{% url 'm_review' t.slug %}">Review &amp; publish →</a></p>
     {% else %}
-      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="result"><input type="hidden" name="next" value="{{ next }}">
-        <table>
-          <tr><td><strong>{{ game.home_team.name }}</strong> <span class="muted small">home</span></td><td style="width:7rem"><input type="number" name="home_score" min="0" value="{{ form.home_score.value|default_if_none:'' }}" required style="width:6rem;font-size:1.2rem" autofocus></td></tr>
-          <tr><td><strong>{{ game.away_team.name }}</strong> <span class="muted small">away</span></td><td><input type="number" name="away_score" min="0" value="{{ form.away_score.value|default_if_none:'' }}" required style="width:6rem;font-size:1.2rem"></td></tr>
+      <form method="post" class="score-form">{% csrf_token %}<input type="hidden" name="action" value="result"><input type="hidden" name="next" value="{{ next }}">
+        <table class="score-table">
+          <thead><tr><th></th>{% for row in score_rows %}<th class="game-col">Game {{ forloop.counter }}{% if not forloop.first %} <button type="button" class="linklike remove-game" title="Remove game {{ forloop.counter }}">×</button>{% endif %}</th>{% endfor %}<th class="add-col"></th></tr></thead>
+          <tbody>
+            <tr><td><strong>{{ game.home_team.name }}</strong> <span class="muted small">home</span></td>
+              {% for h, a in score_rows %}<td class="game-col"><input type="number" name="home_score" min="0" inputmode="numeric" value="{{ h|default_if_none:'' }}" {% if forloop.first %}required autofocus{% endif %}></td>{% endfor %}
+              <td class="add-col" rowspan="2"><button type="button" class="btn btn-ghost btn-sm add-game">+ Add game</button></td></tr>
+            <tr><td><strong>{{ game.away_team.name }}</strong> <span class="muted small">away</span></td>
+              {% for h, a in score_rows %}<td class="game-col"><input type="number" name="away_score" min="0" inputmode="numeric" value="{{ a|default_if_none:'' }}" {% if forloop.first %}required{% endif %}></td>{% endfor %}</tr>
+          </tbody>
         </table>
-        {% if form.errors %}<div class="callout err">Enter both scores (0 or more).</div>{% endif %}
-        <div class="field" style="margin-top:.6rem"><label>If the score is tied, the winner is{% if not is_elim and t.allow_draws %} (leave empty for a draw){% endif %}</label>
-          <select name="winner_side"><option value="">—</option><option value="H" {% if form.winner_side.value == 'H' %}selected{% endif %}>{{ game.home_team.name }}</option><option value="A" {% if form.winner_side.value == 'A' %}selected{% endif %}>{{ game.away_team.name }}</option></select></div>
+        <p class="muted small multi-note">With more than one game (e.g. best of 3), the result is the number of games won and every game needs a winner.</p>
+        <div class="field tie-field" style="margin-top:.6rem"><label>If the score is tied, the winner is{% if not is_elim and t.allow_draws %} (leave empty for a draw){% endif %}</label>
+          <select name="winner_side"><option value="">—</option><option value="H" {% if tied_winner == 'H' %}selected{% endif %}>{{ game.home_team.name }}</option><option value="A" {% if tied_winner == 'A' %}selected{% endif %}>{{ game.away_team.name }}</option></select></div>
         <button class="btn" type="submit">{% if game.has_result %}Update result{% else %}Submit result{% endif %}</button>
       </form>
     {% endif %}

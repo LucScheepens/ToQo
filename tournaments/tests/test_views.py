@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from tournaments.models import Game, Membership, Space, Stage, Tournament
+from tournaments.models import Entry, Game, Membership, Space, Stage, Tournament
 
 
 class DemoPagesTests(TestCase):
@@ -151,3 +151,63 @@ class OrganizerFlowTests(TestCase):
             self.assertContains(res, "affects results that were already entered")
             res = c.post(reverse("m_game", args=[t.slug, pool_game.id]), {"action": "result", "confirm": "1", **flip})
         self.assertEqual(res.status_code, 302)
+
+
+class QueueBoardTests(TestCase):
+    def test_drag_to_court_and_back(self):
+        from tournaments.models import Team
+        from tournaments.services import publishing, structure
+
+        from .helpers import add_venue, make_tournament
+        t, cat = make_tournament(12, schedule_mode=Tournament.ScheduleMode.QUEUE)
+        Team.objects.filter(category=cat, seed__gt=6).update(group=2)
+        structure.apply_format(cat, "swiss_tiers", {"rounds": 3})
+        add_venue(t, courts=2)
+        publishing.publish(t)
+        self.client.login(username="owner", password="password123")
+        url = reverse("m_queue", args=[t.slug])
+        page = self.client.get(url)
+        self.assertContains(page, "data-court=")
+        self.assertContains(page, "tone-4")  # upper poule
+        self.assertContains(page, "tone-5")  # lower poule
+        c1, c2 = Space.objects.all()
+        g1, g2 = Game.objects.filter(stage__category=cat, round=1, pool__order=0)[:2]
+        self.client.post(url, {"action": "start", "game": g1.id, "space": c1.id})
+        g1.refresh_from_db()
+        self.assertEqual((g1.status, g1.space_id), (Game.Status.IN_PROGRESS, c1.id))
+        # Court 1 is busy now.
+        self.client.post(url, {"action": "start", "game": g2.id, "space": c1.id})
+        g2.refresh_from_db()
+        self.assertEqual(g2.status, Game.Status.SCHEDULED)
+        self.client.post(url, {"action": "stop", "game": g1.id})
+        g1.refresh_from_db()
+        self.assertEqual((g1.status, g1.space_id), (Game.Status.SCHEDULED, None))
+
+
+class AdvanceReviewTests(TestCase):
+    def test_review_then_fill_brackets(self):
+        from tournaments.models import Team
+        from tournaments.services import publishing, structure
+
+        from .helpers import make_tournament, play_all
+        t, cat = make_tournament(12, schedule_mode=Tournament.ScheduleMode.QUEUE)
+        Team.objects.filter(category=cat, seed__gt=6).update(group=2)
+        structure.apply_format(cat, "swiss_tiers", {"rounds": 2})
+        publishing.publish(t)
+        seeding, knockouts = cat.stages.all()
+        self.client.login(username="owner", password="password123")
+        url = reverse("m_advance", args=[t.slug, seeding.id])
+        self.assertContains(self.client.get(url), "isn't finished yet")
+        play_all(cat)
+        self.assertContains(self.client.get(reverse("m_queue", args=[t.slug])), url)
+        page = self.client.get(url)
+        self.assertContains(page, "Fill the brackets")
+        self.assertContains(page, "Upper poule #1")
+        self.client.post(url)  # checkbox not ticked
+        seeding.refresh_from_db()
+        self.assertIsNone(seeding.advanced_at)
+        resp = self.client.post(url, {"checked": "1"})
+        self.assertRedirects(resp, reverse("m_queue", args=[t.slug]))
+        seeding.refresh_from_db()
+        self.assertIsNotNone(seeding.advanced_at)
+        self.assertFalse(Entry.objects.filter(pool__stage=knockouts, team__isnull=True).exists())

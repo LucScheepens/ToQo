@@ -206,6 +206,97 @@ class SwissTests(TestCase):
         self.assertEqual(len(set(byes)), 3)
 
 
+class SwissTiersTests(TestCase):
+    def setUp(self):
+        self.t, self.cat = make_tournament(48)
+        Team.objects.filter(category=self.cat, seed__gt=24).update(group=2)
+        Team.objects.filter(category=self.cat, seed__lte=24).update(group=1)
+        structure.apply_format(self.cat, "swiss_tiers", {"rounds": 3})
+        self.seeding, self.knockouts = list(self.cat.stages.all())
+
+    def test_structure(self):
+        up, low = self.seeding.pools.all()
+        self.assertEqual({e.team.group for e in up.entries.all()}, {1})
+        self.assertEqual({e.team.group for e in low.entries.all()}, {2})
+        self.assertEqual(self.seeding.games.count(), 2 * 3 * 12)
+        flights = {p.name: [e.source_label for e in p.entries.all()] for p in self.knockouts.pools.all()}
+        self.assertEqual([len(v) for v in flights.values()], [16, 16, 16])
+        self.assertEqual(flights["Advanced"][-1], "Upper poule #16")
+        self.assertEqual(flights["Intermediate"][:2], ["Upper poule #17", "Upper poule #18"])
+        self.assertEqual(flights["Intermediate"][-1], "Lower poule #8")
+        self.assertEqual(flights["Beginner"][0], "Lower poule #9")
+
+    def test_round_one_random_within_poule_then_swiss(self):
+        r1 = list(self.seeding.games.filter(round=1))
+        self.assertTrue(all(g.home_team.group == g.away_team.group for g in r1))
+        self.assertNotEqual(sorted((g.home_team.seed, g.away_team.seed) for g in r1),
+                            [(i, i + 12) for i in range(1, 13)] + [(i, i + 12) for i in range(25, 37)])
+        before = [(g.home_team_id, g.away_team_id) for g in r1]
+        structure.recompute_category(self.cat)
+        self.assertEqual(before, [(g.home_team_id, g.away_team_id) for g in self.seeding.games.filter(round=1)])
+
+    def test_full_lifecycle(self):
+        publishing.publish(self.t)
+        play_all(self.cat)
+        self.assertEqual(stage_status(self.seeding), "complete")
+        pairs = [frozenset((g.home_team_id, g.away_team_id)) for g in self.seeding.games.all()]
+        self.assertEqual(len(pairs), len(set(pairs)))
+        transitions.advance(self.seeding)
+        for flight in self.knockouts.pools.all():
+            self.assertEqual(flight.entries.filter(team__isnull=True).count(), 0)
+        inter = self.knockouts.pools.get(name="Intermediate")
+        self.assertEqual([e.team.group for e in inter.entries.all()], [1] * 8 + [2] * 8)
+        play_all(self.cat)
+        self.assertEqual(stage_status(self.knockouts), "complete")
+        self.assertEqual(len(category_final_standings(self.cat)), 48)
+
+    def test_add_and_remove_unpaired_rounds_mid_event(self):
+        publishing.publish(self.t)
+        g = playable(self.cat)[0]
+        results.submit_result(g, 11, 4)
+        r1 = {x.id: (x.home_team_id, x.away_team_id) for x in self.seeding.games.filter(round=1)}
+        structure.set_swiss_rounds(self.seeding, 2)  # drop round 3
+        self.assertEqual(sorted(r["round"] for r in structure.swiss_rounds(self.seeding)), [1, 2])
+        structure.set_swiss_rounds(self.seeding, 4)  # add rounds 3 and 4
+        self.seeding.refresh_from_db()
+        self.assertEqual(self.seeding.config["rounds"], 4)
+        self.assertEqual(self.seeding.games.filter(round=4).count(), 24)
+        self.assertEqual(r1, {x.id: (x.home_team_id, x.away_team_id) for x in self.seeding.games.filter(round=1)})
+        g.refresh_from_db()
+        self.assertEqual(g.home_score, 11)
+        with self.assertRaises(ServiceError):
+            structure.set_swiss_rounds(self.seeding, 0)
+        play_all(self.cat)  # finishes the 4 seeding rounds (knockouts wait for advancement)
+        with self.assertRaises(ServiceError):
+            structure.set_swiss_rounds(self.seeding, 3)  # round 4 is played
+        self.assertEqual(stage_status(self.seeding), "complete")
+
+    def test_remove_paired_round_without_results(self):
+        publishing.publish(self.t)
+        for g in playable(self.cat):
+            if g.round == 1:
+                results.submit_result(g, 11, 4)
+        self.assertTrue(structure.swiss_rounds(self.seeding)[1]["paired"])
+        structure.set_swiss_rounds(self.seeding, 1)  # round 2 is paired but unplayed
+        self.assertEqual([r["round"] for r in structure.swiss_rounds(self.seeding)], [1])
+        self.assertEqual(stage_status(self.seeding), "complete")
+        structure.set_swiss_rounds(self.seeding, 2)
+        g = self.seeding.games.filter(round=2).exclude(home_team=None).first()
+        from tournaments.models import Space
+        add_venue(self.t, courts=1)
+        scheduling.start_game(g, Space.objects.first())
+        with self.assertRaisesMessage(ServiceError, "being played"):
+            structure.set_swiss_rounds(self.seeding, 1)
+        results.submit_result(g, 11, 2)
+        with self.assertRaisesMessage(ServiceError, "already has results"):
+            structure.set_swiss_rounds(self.seeding, 1)
+
+    def test_needs_both_poules(self):
+        Team.objects.filter(category=self.cat).update(group=1)
+        with self.assertRaises(ServiceError):
+            structure.apply_format(self.cat, "swiss_tiers", {"rounds": 3})
+
+
 class QueueTests(TestCase):
     def test_queue_assigns_next_game(self):
         t, cat = make_tournament(4, schedule_mode=Tournament.ScheduleMode.QUEUE)
@@ -245,3 +336,38 @@ class CustomStageTests(TestCase):
         self.assertEqual([e.team.seed for e in entries[:3]], [1, 2, 3])
         # Runners-up are seeds 6, 5, 4 with identical records; the final fallback is team name.
         self.assertEqual(entries[3].team.seed, 4)
+
+
+class QueueAndBestOfTests(TestCase):
+    def setUp(self):
+        self.t, self.cat = make_tournament(8, schedule_mode=Tournament.ScheduleMode.QUEUE)
+        structure.apply_format(self.cat, "rr", {"pools": 1})
+        add_venue(self.t, courts=1)
+        publishing.publish(self.t)
+        from tournaments.models import Space
+        self.court = Space.objects.get()
+
+    def test_auto_queue_toggle(self):
+        g = scheduling.start_next(self.t, self.court)
+        results.submit_result(g, 11, 5)
+        self.assertTrue(Game.objects.filter(space=self.court, status=Game.Status.IN_PROGRESS).exists())
+        self.t.auto_queue = False
+        self.t.save()
+        live = Game.objects.get(space=self.court, status=Game.Status.IN_PROGRESS)
+        results.submit_result(live, 11, 9)
+        self.assertFalse(Game.objects.filter(space=self.court, status=Game.Status.IN_PROGRESS).exists())
+
+    def test_best_of_three(self):
+        g = playable(self.cat)[0]
+        results.submit_games(g, [(11, 7), (9, 11), (11, 5)])
+        g.refresh_from_db()
+        self.assertEqual((g.home_score, g.away_score, g.winner_side), (2, 1, "H"))
+        self.assertEqual(g.sets, [[11, 7], [9, 11], [11, 5]])
+        self.assertEqual(g.sets_label, "11–7, 9–11, 11–5")
+        results.submit_games(g, [(8, 11)], confirm=True)  # back to a single game
+        g.refresh_from_db()
+        self.assertEqual((g.home_score, g.away_score, g.sets), (8, 11, []))
+        with self.assertRaises(ServiceError):
+            results.submit_games(g, [(11, 7), (10, 10)], confirm=True)
+        with self.assertRaises(ServiceError):
+            results.submit_games(g, [(11, 7), (None, 3)], confirm=True)

@@ -214,6 +214,7 @@ are stored on the category so they can be regenerated.
 | Double elimination (`de`) | grand_final_reset | 1 DE stage |
 | Swiss (`swiss`) | rounds | 1 Swiss stage |
 | RR → Playoffs (`rr_playoff`) | pools, cycles, advance_per_pool, playoff_kind (se/de), placement, consolation | RR stage + bracket stage with a Championship flight (top *k* per pool) and optionally a Consolation flight (next *k* per pool) |
+| Swiss seeding → tiered knockouts (`swiss_tiers`) | rounds, placement | Swiss stage "Seeding" with an Upper and Lower poule (by `Team.group`; teams without one balance the two; round 1 random), then SE stage "Knockouts" with three flights: Advanced = upper #1…⅔, Intermediate = upper bottom ⅓ then lower top ⅓, Beginner = lower bottom ⅔ |
 | Custom | — | empty; stages are added manually with any kind/pool count/slot count and any advancement sources |
 
 Team distribution into pools uses **snake seeding** (seed ascending, unseeded last in
@@ -246,7 +247,9 @@ losers, order reversed on even rounds to reduce rematches) followed, when r < k,
 auto-cancelled as not required.
 
 ### 7.4 Swiss — `engine.swiss.pair_round`
-Round 1: top half vs bottom half by seed. Later rounds: teams ordered by current
+Each pool is paired independently. Round 1: top half vs bottom half by seed, or a
+random draw when the stage config has `first_round: "random"` (stable per `shuffle_seed`,
+so recomputing never reshuffles). Later rounds: teams ordered by current
 standings; greedy pairing with backtracking avoids rematches (falls back to allowing a
 rematch only if no rematch-free pairing exists). Odd count: lowest-ranked team without
 a previous bye gets a bye (counts as a win, no points for/against). Placeholder games

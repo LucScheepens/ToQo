@@ -1,4 +1,5 @@
 """Formats, stages, pools, slots and game generation (SPEC §5, §6, §7)."""
+import random
 import string
 
 from django.db import transaction
@@ -11,7 +12,8 @@ from ..models import Category, Entry, Game, Pool, Stage, Team
 from .common import ServiceError
 from .resolution import recompute_category
 
-TEMPLATED = {"rr", "se", "de", "swiss", "rr_playoff"}
+TEMPLATED = {"rr", "se", "de", "swiss", "rr_playoff", "swiss_tiers"}
+TIER_NAMES = ["Advanced", "Intermediate", "Beginner"]
 
 
 def ordered_teams(category):
@@ -29,6 +31,21 @@ def snake(teams, n_pools):
         r, j = divmod(i, n_pools)
         buckets[j if r % 2 == 0 else n_pools - 1 - j].append(t)
     return buckets
+
+
+def split_groups(teams):
+    """Upper/lower starting poules for ``swiss_tiers``; teams without a poule balance the two."""
+    upper = [t for t in teams if t.group == 1]
+    lower = [t for t in teams if t.group == 2]
+    for t in teams:
+        if t.group not in (1, 2):
+            (upper if len(upper) <= len(lower) else lower).append(t)
+    return upper, lower
+
+
+def tier_sizes(n_upper, n_lower):
+    """(top of upper → Advanced, top of lower → Intermediate): top 2/3 and top 1/3."""
+    return round(2 * n_upper / 3), n_lower - round(2 * n_lower / 3)
 
 
 def _int(params, key, default, lo=None, hi=None):
@@ -56,6 +73,9 @@ def normalize_params(kind, params, n_teams):
         p["grand_final_reset"] = bool(params.get("grand_final_reset", True))
     if kind == "swiss":
         p["rounds"] = _int(params, "rounds", 3, 1, max(1, n_teams - 1))
+    if kind == "swiss_tiers":
+        p["rounds"] = _int(params, "rounds", 3, 1, max(1, n_teams // 2 - 1))
+        p["placement"] = params.get("placement") if params.get("placement") in ("none", "third", "all") else "none"
     if kind == "rr_playoff":
         min_pool = n_teams // p["pools"]
         p["advance_per_pool"] = _int(params, "advance_per_pool", 2, 1, max(1, min_pool))
@@ -115,6 +135,8 @@ def apply_format(category, kind, params=None):
     elif kind == "swiss":
         s = _stage(category, "Swiss", 1, Stage.Kind.SWISS, {"rounds": p["rounds"]})
         _fill(Pool.objects.create(stage=s, name="Swiss", order=0), teams)
+    elif kind == "swiss_tiers":
+        _swiss_tiers(category, teams, p)
     elif kind != "custom":
         raise ServiceError("Unknown format.")
 
@@ -123,6 +145,32 @@ def apply_format(category, kind, params=None):
         build_games(stage, recompute=False)
     renumber(category.tournament)
     recompute_category(category)
+
+
+def _swiss_tiers(category, teams, p):
+    """Two Swiss seeding poules, then three knockouts blended from their rankings:
+    Advanced = top 2/3 of the upper poule; Intermediate = bottom 1/3 of the upper + top 1/3
+    of the lower poule; Beginner = bottom 2/3 of the lower poule. Bracket seeds follow the
+    order listed, so upper-poule players are the higher seeds in Intermediate."""
+    upper, lower = split_groups(teams)
+    if len(upper) < 3 or len(lower) < 3:
+        raise ServiceError("Put at least three players in both the upper and the lower poule "
+                           "(set each player's starting poule on the Teams page).")
+    seeding = _stage(category, "Seeding", 1, Stage.Kind.SWISS,
+                     {"rounds": p["rounds"], "first_round": "random", "shuffle_seed": random.randrange(1 << 30)})
+    up = Pool.objects.create(stage=seeding, name="Upper poule", order=0)
+    low = Pool.objects.create(stage=seeding, name="Lower poule", order=1)
+    _fill(up, upper)
+    _fill(low, lower)
+    knockouts = _stage(category, "Knockouts", 2, Stage.Kind.SE, {"placement": p["placement"]})
+    a_top, b_top = tier_sizes(len(upper), len(lower))
+    tiers = [[(up, r) for r in range(1, a_top + 1)],
+             [(up, r) for r in range(a_top + 1, len(upper) + 1)] + [(low, r) for r in range(1, b_top + 1)],
+             [(low, r) for r in range(b_top + 1, len(lower) + 1)]]
+    for i, (name, sources) in enumerate(zip(TIER_NAMES, tiers)):
+        flight = Pool.objects.create(stage=knockouts, name=name, order=i)
+        for pos, (pool, rank) in enumerate(sources, start=1):
+            Entry.objects.create(pool=flight, position=pos, source_pool=pool, source_rank=rank)
 
 
 def build_games(stage, recompute=True):
@@ -144,8 +192,7 @@ def build_games(stage, recompute=True):
                                         home_entry=entries[h], away_entry=entries[a])
         elif stage.kind == Stage.Kind.SWISS:
             for r in range(1, (cfg.get("rounds") or 3) + 1):
-                for i in range(1, (n + 1) // 2 + 1):
-                    Game.objects.create(**common, round=r, index=i, code=f"S{r}-{i}", label=f"Swiss round {r}")
+                _swiss_round_games(stage, pool, r, n, multi)
         else:
             if stage.kind == Stage.Kind.SE:
                 bgames = single_elimination(n, cfg.get("placement") or "none")
@@ -172,13 +219,83 @@ def build_games(stage, recompute=True):
         recompute_category(stage.category)
 
 
+def _swiss_round_games(stage, pool, r, n, multi):
+    """Placeholder games for Swiss round ``r`` of a pool with ``n`` slots (paired later)."""
+    prefix = f"{pool.short}-" if multi else ""
+    for i in range(1, (n + 1) // 2 + 1):
+        Game.objects.create(stage=stage, pool=pool, duration=stage.duration, round=r, index=i,
+                            code=f"{prefix}S{r}-{i}", label=(f"{pool.name} · " if multi else "") + f"Swiss round {r}")
+
+
+def _paired(g):
+    return bool(g.home_team_id or g.away_team_id or g.home_bye or g.away_bye
+                or g.status != Game.Status.SCHEDULED)
+
+
+def swiss_rounds(stage):
+    """Per-round status of a Swiss stage: [{"round", "games", "paired", "started", "live", "done"}].
+
+    ``started``: some game has a result; ``live``: some game is being played right now."""
+    rounds = {}
+    for g in stage.games.all():
+        r = rounds.setdefault(g.round, {"round": g.round, "games": 0, "paired": False, "started": False,
+                                        "live": False, "done": True})
+        r["games"] += not g.is_bye
+        r["paired"] |= _paired(g)
+        r["started"] |= g.status in (Game.Status.COMPLETED, Game.Status.FORFEIT, Game.Status.CANCELLED)
+        r["live"] |= g.status == Game.Status.IN_PROGRESS
+        r["done"] &= g.is_resolved or g.is_bye
+    return [rounds[k] for k in sorted(rounds)]
+
+
+def removable_from(rounds):
+    """Lowest round number that may be removed: every later round has no result and no live game."""
+    return max((r["round"] for r in rounds if r["started"] or r["live"]), default=0) + 1
+
+
+@transaction.atomic
+def set_swiss_rounds(stage, n):
+    """Add rounds, or remove trailing rounds whose games have no result yet (paired or not),
+    without touching earlier rounds."""
+    if stage.kind != Stage.Kind.SWISS:
+        raise ServiceError("Only Swiss stages have rounds.")
+    if n < 1:
+        raise ServiceError("A Swiss stage needs at least one round.")
+    if stage.advanced_at:
+        raise ServiceError("Players have already advanced from this stage. Undo the advancement first.")
+    rounds = swiss_rounds(stage)
+    current = rounds[-1]["round"] if rounds else 0
+    keep = removable_from(rounds) - 1
+    if n < keep:
+        r = rounds[keep - 1]
+        why = "is being played (take its games off the court first)" if r["live"] and not r["started"]             else "already has results"
+        raise ServiceError(f"Round {keep} {why}, so rounds 1–{keep} can't be removed.")
+    stage.games.filter(round__gt=n).delete()
+    multi = stage.pools.count() > 1
+    for r in range(current + 1, n + 1):
+        for pool in stage.pools.all():
+            _swiss_round_games(stage, pool, r, pool.entries.count(), multi)
+    stage.config = {**(stage.config or {}), "rounds": n}
+    stage.save(update_fields=["config"])
+    category = stage.category
+    if category.format_kind in ("swiss", "swiss_tiers") and stage.order == 1:
+        category.format_params = {**(category.format_params or {}), "rounds": n}
+        category.save(update_fields=["format_params"])
+    renumber(category.tournament)
+    recompute_category(category)
+
+
 def renumber(tournament):
-    """Assign Game #n by start time (scheduled first), then structural order (SPEC §11.2)."""
+    """Assign Game #n by start time (scheduled first; ignored in queue mode), then structural order
+    (SPEC §11.2)."""
     games = list(Game.objects.filter(stage__category__tournament=tournament)
                  .select_related("stage", "stage__category", "pool"))
 
+    timed = tournament.schedule_mode == tournament.ScheduleMode.TIMED
+
     def key(g):
-        return (g.start_at is None, g.start_at or 0, g.stage.order, g.round if not g.bracket else 0,
+        start = g.start_at if timed else None  # queue mode: start times are not a plan
+        return (start is None, start or 0, g.stage.order, g.round if not g.bracket else 0,
                 g.id if g.bracket else 0, g.stage.category.order, g.pool.order, g.index, g.id)
 
     for n, g in enumerate(sorted(games, key=key), start=1):
@@ -193,7 +310,7 @@ def renumber(tournament):
 def add_stage(category, name, kind, pools, slots):
     order = (category.stages.aggregate(m=Max("order"))["m"] or 0) + 1
     defaults = {"rr": {"cycles": 1}, "se": {"placement": "none"}, "de": {"grand_final_reset": True},
-                "swiss": {"rounds": 3}}
+                "swiss": {"rounds": 3, "first_round": "seeded", "shuffle_seed": random.randrange(1 << 30)}}
     stage = _stage(category, name, order, kind, defaults.get(kind, {}))
     names = pool_names(pools) if kind in ("rr", "swiss") else (
         ["Bracket"] if pools == 1 else [f"Flight {i + 1}" for i in range(pools)])
@@ -327,7 +444,7 @@ def unassigned_teams(category):
     return [t for t in category.teams.all() if t.id not in placed]
 
 
-def bulk_add_teams(category, text):
+def bulk_add_teams(category, text, group=None):
     names, created = [], 0
     existing = set(category.teams.values_list("name", flat=True))
     order = (category.teams.aggregate(m=Max("order"))["m"] or 0)
@@ -337,7 +454,7 @@ def bulk_add_teams(category, text):
             names.append(name)
     for name in names:
         order += 1
-        Team.objects.create(category=category, name=name, order=order)
+        Team.objects.create(category=category, name=name, order=order, group=group)
         created += 1
     return created
 

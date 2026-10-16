@@ -112,8 +112,9 @@ def dashboard(request, t):
     for cv in cats:
         for sv in cv["stages"]:
             if sv["status"] == "complete" and transitions.can_advance(sv["stage"]):
-                actions.append({"text": f"{cv['category'].name}: {sv['stage'].name} is complete — advance teams",
-                                "url": reverse("m_standings", args=[t.slug]) + f"#stage-{sv['stage'].id}",
+                actions.append({"text": f"{cv['category'].name}: {sv['stage'].name} is complete — review & fill "
+                                        "the next stage",
+                                "url": reverse("m_advance", args=[t.slug, sv["stage"].id]),
                                 "primary": True})
     conflicts = find_conflicts(t, games) if t.schedule_mode == Tournament.ScheduleMode.TIMED else {}
     if conflicts:
@@ -149,6 +150,8 @@ def settings_view(request, t):
                 form.add_error("slug", "That address is taken.")
             else:
                 form.save()
+                if "schedule_mode" in form.changed_data:
+                    structure.renumber(t)
                 touch(t)
                 messages.success(request, "Settings saved.")
                 return redirect("m_settings", t.slug)
@@ -249,7 +252,7 @@ def teams(request, t):
             if bulk.is_valid():
                 created = []
                 if _team_change(request, cat, lambda: created.append(
-                        structure.bulk_add_teams(cat, bulk.cleaned_data["names"]))):
+                        structure.bulk_add_teams(cat, bulk.cleaned_data["names"], bulk.cleaned_data["group"]))):
                     messages.success(request, f"Added {created[0]} team(s).")
                     return redirect(url)
         elif action == "delete":
@@ -262,13 +265,18 @@ def teams(request, t):
                 for team in cat.teams.all():
                     raw = request.POST.get(f"seed_{team.id}", "").strip()
                     team.seed = int(raw) if raw.isdigit() else None
-                    team.save(update_fields=["seed"])
+                    if f"group_{team.id}" in request.POST:
+                        raw = request.POST[f"group_{team.id}"]
+                        team.group = int(raw) if raw in ("1", "2") else None
+                    team.save(update_fields=["seed", "group"])
             if _team_change(request, cat, fn):
                 messages.success(request, "Seeds saved.")
             return redirect(url)
     team_list = sorted(cat.teams.all(), key=lambda x: (x.seed is None, x.seed or 0, x.order)) if cat else []
     return page(request, t, "manage/teams.html", "teams", cats=cats, cat=cat, form=form, bulk=bulk,
-                team_list=team_list, has_results=cat and structure.category_has_results(cat))
+                team_list=team_list, has_results=cat and structure.category_has_results(cat),
+                show_group=cat and (cat.format_kind == "swiss_tiers" or cat.teams.filter(group__isnull=False).exists()),
+                groups=Team.GROUPS)
 
 
 @manage()
@@ -276,7 +284,7 @@ def team_edit(request, t, team_id):
     team = get_object_or_404(Team, pk=team_id, category__tournament=t)
     form = TeamForm(request.POST or None, instance=team)
     if request.method == "POST" and form.is_valid():
-        seed_changed = "seed" in form.changed_data
+        seed_changed = bool({"seed", "group"} & set(form.changed_data))
         form.save()
         if seed_changed and team.category.format_kind in structure.TEMPLATED and \
                 not structure.category_has_results(team.category):
@@ -351,7 +359,8 @@ def stage_detail(request, t, stage_id):
     form = StageForm(request.POST or None, initial={
         "name": stage.name, "game_minutes": stage.game_minutes, "cycles": cfg.get("cycles", 1),
         "games_per_team": cfg.get("games_per_team"), "placement": cfg.get("placement", "none"),
-        "grand_final_reset": cfg.get("grand_final_reset", True), "rounds": cfg.get("rounds", 3)})
+        "grand_final_reset": cfg.get("grand_final_reset", True), "rounds": cfg.get("rounds", 3),
+        "first_round": cfg.get("first_round", "seeded")})
     add_form = AddStageForm()
     if request.method == "POST":
         action = request.POST.get("action")
@@ -366,7 +375,8 @@ def stage_detail(request, t, stage_id):
                 elif stage.kind == "de":
                     new_cfg.update(grand_final_reset=d["grand_final_reset"])
                 elif stage.kind == "swiss":
-                    new_cfg.update(rounds=d["rounds"] or 3)
+                    new_cfg.update(first_round=d["first_round"] or "seeded")
+                    rounds = d["rounds"] or cfg.get("rounds") or 3
                 tbs = [request.POST.get(f"tb{i}") for i in range(6)]
                 stage.tiebreakers = [x for i, x in enumerate(tbs) if x in TIEBREAKERS and x not in tbs[:i]]
                 stage.name = d["name"]
@@ -377,9 +387,13 @@ def stage_detail(request, t, stage_id):
                         and not request.POST.get("confirm"):
                     raise ServiceError("This stage has results; changing its structure deletes them. "
                                        "Tick the confirmation box.")
+                if structural and stage.kind == "swiss":
+                    new_cfg["rounds"] = rounds
                 stage.config = new_cfg
                 stage.save()
                 stage.games.update(duration=stage.duration)
+                if stage.kind == "swiss" and not structural and rounds != cfg.get("rounds"):
+                    structure.set_swiss_rounds(stage, rounds)
                 if structural:
                     structure.build_games(stage)
                     messages.info(request, "Games rebuilt — schedule them again.")
@@ -401,6 +415,13 @@ def stage_detail(request, t, stage_id):
                 )
                 recompute_category(cat)
                 touch(t)
+                return redirect(url)
+            if action in ("add_round", "remove_round"):
+                n = (cfg.get("rounds") or 3) + (1 if action == "add_round" else -1)
+                structure.set_swiss_rounds(stage, n)
+                touch(t)
+                log(t, request.user, "format", f"{cat.name}: {stage.name} now has {n} rounds")
+                messages.success(request, f"{stage.name} now has {n} round{'s' if n != 1 else ''}.")
                 return redirect(url)
             if action == "unlock":
                 entry = get_object_or_404(Entry, pk=request.POST.get("entry"), pool__stage=stage)
@@ -451,7 +472,9 @@ def stage_detail(request, t, stage_id):
     for pool in stage.pools.prefetch_related("entries__team", "entries__source_pool", "entries__source_stage"):
         pools.append({"pool": pool, "entries": [(e, _entry_source_value(e)) for e in pool.entries.all()]})
     tbs = tiebreakers_for(stage) + [""] * 6
+    rounds = structure.swiss_rounds(stage) if stage.kind == Stage.Kind.SWISS else []
     return page(request, t, "manage/stage.html", "format", stage=stage, cat=cat, form=form, add_form=add_form,
+                rounds=rounds, removable_from=structure.removable_from(rounds),
                 pools=pools, is_first=is_first, teams=cat.teams.all(), source_options=_source_options(stage),
                 tiebreaker_choices=TIEBREAKERS.items(), tbs=tbs[:6], status=stage_status(stage),
                 unassigned=structure.unassigned_teams(cat) if is_first else [],
